@@ -4,10 +4,10 @@
   "description": "A smart scheduling application for home healthcare services.",
   "main": "main.js",
   "scripts": {
-"start": "npm run build:frontend && electron .",
-"build:frontend": "cd frontend && npm install && npm run build",
+    "start": "npm run build:frontend && electron .",
+    "build:frontend": "cd frontend && npm install && npm run build",
     "lint": "eslint .",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "jest",
     "test:e2e": "playwright test",
     "build": "electron-builder",
     "seed": "node -e \"require('./services/seed-data').seedDatabase()\""
@@ -24,13 +24,30 @@
   },
   "dependencies": {
     "firebase-admin": "^11.9.0",
-    "groq-sdk": "^0.2.0"
+    "groq-sdk": "^0.2.0",
+    "mammoth": "^1.9.1",
+    "pdf-parse": "^1.1.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
     "@playwright/test": "^1.53.0",
     "electron": "^25.0.0",
     "electron-builder": "^23.6.0",
     "eslint": "^9.29.0",
-    "globals": "^16.2.0"
+    "globals": "^16.2.0",
+    "jest": "^30.0.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/tests/**/*.spec.js",
+      "**/tests/**/*.test.js"
+    ],
+    "clearMocks": true,
+    "coveragePathIgnorePatterns": [
+      "/node_modules/",
+      "/frontend/"
+    ]
   }
 }

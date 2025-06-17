@@ -96,8 +96,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     secureIPCInvoke('firebase:getSchedulesByCaregiverId', caregiverId, startDate, endDate),
   
   // Client and Caregiver management
+  createClient: (data) => secureIPCInvoke('firebase:createClient', data),
+  getClient: (clientId) => secureIPCInvoke('firebase:getClient', clientId),
+  getAllClients: () => secureIPCInvoke('firebase:getAllClients'),
   updateClient: (clientId, data) => secureIPCInvoke('firebase:updateClient', clientId, data),
+  deleteClient: (id) => secureIPCInvoke('firebase:deleteClient', id),
+
+  createCaregiver: (data) => secureIPCInvoke('firebase:createCaregiver', data),
+  getCaregiver: (caregiverId) => secureIPCInvoke('firebase:getCaregiver', caregiverId),
+  getAllCaregivers: () => secureIPCInvoke('firebase:getAllCaregivers'),
   updateCaregiver: (caregiverId, data) => secureIPCInvoke('firebase:updateCaregiver', caregiverId, data),
+  deleteCaregiver: (id) => secureIPCInvoke('firebase:deleteCaregiver', id),
   
   // Caregiver availability management
   getCaregiverAvailability: (caregiverId) => secureIPCInvoke('firebase:getCaregiverAvailability', caregiverId),
@@ -185,7 +194,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     } catch (error) {
       throw new Error('Sign out failed');
     }
-  }
+  },
+
+  // Batch Upload
+  uploadBatchFile: (params) => secureIPCInvoke('upload-batch-file', params),
+  getBatchUploadProgress: (batchId) => secureIPCInvoke('get-batch-upload-progress', batchId),
+  cancelBatchUpload: (batchId) => secureIPCInvoke('cancel-batch-upload', batchId),
 });
 
 // Only enable additional debugging in development mode

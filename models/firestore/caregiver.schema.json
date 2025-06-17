@@ -1,0 +1,45 @@
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Full name of the caregiver."
+    },
+    "email": {
+      "type": "string",
+      "format": "email",
+      "description": "Primary email address of the caregiver."
+    },
+    "phone": {
+      "type": "string",
+      "description": "Primary phone number of the caregiver."
+    },
+    "address": {
+      "type": "string",
+      "description": "Full address of the caregiver."
+    },
+    "dateOfBirth": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of birth in YYYY-MM-DD format."
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of skills the caregiver possesses (e.g., dementia care, CPR certified)."
+    },
+    "yearsOfExperience": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Years of professional caregiving experience."
+    },
+    "isActive": {
+        "type": "boolean",
+        "description": "Whether the caregiver is currently available for assignments.",
+        "default": true
+    }
+  },
+  "required": ["name", "email"]
+}

@@ -3,8 +3,7 @@
  * Provides interface to schedule scanner functionality with browser fallback
  */
 
-// Import the firebaseService to check if we're in Electron mode
-import { firebaseService } from './index';
+import { isElectronAvailable } from './firebaseService'; // Corrected import
 
 // Helper function to simulate network delay
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -36,7 +35,9 @@ const MOCK_SCAN_HISTORY = [
 
 class ScannerService {
   constructor() {
-    this.isElectronAvailable = typeof window !== 'undefined' && window.electronAPI;
+    // this.isElectronAvailable = typeof window !== 'undefined' && window.electronAPI;
+    // Use the imported isElectronAvailable for consistency
+    this.isElectronAvailable = isElectronAvailable;
     this.mockScanHistory = [...MOCK_SCAN_HISTORY];
     this.mockStatus = {
       isRunning: false,

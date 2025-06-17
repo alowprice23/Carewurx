@@ -14,6 +14,19 @@ const scheduleScanner = require('./services/schedule-scanner');
 const enhancedScheduler = require('./services/enhanced-scheduler');
 const notificationService = require('./services/notification-service');
 const { firebaseService } = require('./services/firebase');
+const realTimeUpdatesService = require('./app/services/real-time-updates'); // Moved from firebase:updateCircularEntity
+
+// Batch Upload Services
+const LLMService = require('./agents/core/llm-service'); // Added
+const LLMDocumentProcessor = require('./services/llmDocumentProcessor'); // Added
+const EntityDataProcessor = require('./services/entityDataProcessor'); // Added
+const fileProcessors = require('./services/fileProcessors'); // Added
+
+// Instantiate services for batch upload
+// Ensure GROQ_API_KEY is in your .env file for LLMService
+const llmService = new LLMService();
+const llmDocumentProcessor = new LLMDocumentProcessor(llmService);
+const entityDataProcessor = new EntityDataProcessor(firebaseService); // firebaseService is already admin instance
 
 let mainWindow;
 
@@ -225,6 +238,54 @@ ipcMain.handle('firebase:updateCaregiver', async (event, caregiverId, data) => {
   return await firebaseService.updateCaregiver(caregiverId, data);
 });
 
+ipcMain.handle('firebase:createClient', async (event, clientData) => {
+  try {
+    // TODO: Add validation for clientData if necessary
+    const newClient = await firebaseService.addClient(clientData);
+    return { success: true, data: newClient };
+  } catch (error) {
+    console.error('Error creating client via IPC:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('firebase:createCaregiver', async (event, caregiverData) => {
+  try {
+    // TODO: Add validation for caregiverData if necessary
+    const newCaregiver = await firebaseService.addCaregiver(caregiverData);
+    return { success: true, data: newCaregiver };
+  } catch (error) {
+    console.error('Error creating caregiver via IPC:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('firebase:deleteClient', async (event, clientId) => {
+  try {
+    if (!clientId || typeof clientId !== 'string') {
+      throw new Error('Invalid client ID provided for deletion.');
+    }
+    await firebaseService.deleteDocument('clients', clientId);
+    return { success: true, id: clientId };
+  } catch (error) {
+    console.error(`Error deleting client ${clientId} via IPC:`, error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('firebase:deleteCaregiver', async (event, caregiverId) => {
+  try {
+    if (!caregiverId || typeof caregiverId !== 'string') {
+      throw new Error('Invalid caregiver ID provided for deletion.');
+    }
+    await firebaseService.deleteDocument('caregivers', caregiverId);
+    return { success: true, id: caregiverId };
+  } catch (error) {
+    console.error(`Error deleting caregiver ${caregiverId} via IPC:`, error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Caregiver availability management
 ipcMain.handle('firebase:getCaregiverAvailability', async (event, caregiverId) => {
   return await firebaseService.getCaregiverAvailability(caregiverId);
@@ -342,7 +403,7 @@ ipcMain.handle('scheduler:optimizeSchedules', async (event, date) => {
 ipcMain.handle('firebase:updateCircularEntity', async (event, entityType, entityId, data) => {
   const result = await firebaseService.updateDocument(entityType, entityId, data);
   // Publish the update to the real-time system to ensure circular data flow
-  const realTimeUpdatesService = require('./app/services/real-time-updates');
+  // const realTimeUpdatesService = require('./app/services/real-time-updates'); // Moved to top
   await realTimeUpdatesService.publish(entityType, { id: entityId, ...data }, 'ipc-channel');
   return result;
 });
@@ -350,6 +411,72 @@ ipcMain.handle('firebase:updateCircularEntity', async (event, entityType, entity
 ipcMain.handle('firebase:getCircularEntities', async (event, entityType, filter) => {
   return await firebaseService.getDocuments(entityType, filter);
 });
+
+
+// Batch Upload IPC Handlers
+ipcMain.handle('upload-batch-file', async (event, { filePath, entityType, fileType }) => {
+  console.log(`[IPC] Received 'upload-batch-file': filePath=${filePath}, entityType=${entityType}, fileType=${fileType}`);
+  try {
+    let fileOutput;
+    switch (fileType.toLowerCase()) {
+      case 'excel': // Handles .xlsx, .xls, .csv (if xlsx library supports it)
+        fileOutput = await fileProcessors.processExcelFile(filePath);
+        break;
+      case 'pdf':
+        fileOutput = await fileProcessors.processPdfFile(filePath);
+        break;
+      case 'word': // Handles .docx
+        fileOutput = await fileProcessors.processWordFile(filePath);
+        break;
+      default:
+        console.error(`[IPC] 'upload-batch-file': Unsupported file type: ${fileType}`);
+        return { success: false, error: `Unsupported file type: ${fileType}` };
+    }
+    console.log(`[IPC] 'upload-batch-file': File processing output for ${fileType}:`, fileOutput);
+
+    // It's possible fileOutput is empty or indicates an error from fileProcessors that wasn't thrown
+    if (!fileOutput || (Array.isArray(fileOutput) && fileOutput.length === 0 && fileType !== 'excel') || (typeof fileOutput.text === 'string' && !fileOutput.text.trim() && fileType !== 'excel')) {
+        // For Excel, an empty array is valid (empty sheet). For text files, empty text might mean nothing to process.
+        if (fileType !== 'excel' || !Array.isArray(fileOutput)) { // Be more specific for non-excel empty cases
+             console.log('[IPC] \'upload-batch-file\': No content extracted from file.');
+             // Return success but with 0 counts, as there's nothing to process further.
+             return { success: true, addedCount: 0, updatedCount: 0, failedCount: 0, errors: [], message: "No content extracted from file or file was empty." };
+        }
+    }
+
+
+    const llmData = await llmDocumentProcessor.processDocument(fileOutput, entityType);
+    console.log(`[IPC] 'upload-batch-file': LLM processing output for ${entityType}:`, llmData);
+    if (!llmData || llmData.length === 0) {
+        console.log('[IPC] \'upload-batch-file\': LLM processing yielded no data.');
+        return { success: true, addedCount: 0, updatedCount: 0, failedCount: 0, errors: [], message: "LLM processing yielded no data to save." };
+    }
+
+    const result = await entityDataProcessor.processEntities(llmData, entityType);
+    console.log(`[IPC] 'upload-batch-file': Entity processing result for ${entityType}:`, result);
+    return { success: true, ...result };
+
+  } catch (error) {
+    console.error(`[IPC] 'upload-batch-file': Error during batch upload processing for ${entityType} - ${fileType}:`, error);
+    return { success: false, error: error.message, details: error.stack };
+  }
+  // TODO: Consider deleting the temp file at filePath after processing, if it's not auto-cleaned.
+});
+
+ipcMain.handle('get-batch-upload-progress', async (event, batchId) => {
+  console.log(`[IPC] Received 'get-batch-upload-progress' for batchId: ${batchId}`);
+  // This is a stub implementation.
+  // A real implementation would query the status of a background batch job.
+  return { batchId, status: 'processing', progress: 50, message: 'Processing file (stub response).', recordsProcessed: 0, totalRecords: 0 };
+});
+
+ipcMain.handle('cancel-batch-upload', async (event, batchId) => {
+  console.log(`[IPC] Received 'cancel-batch-upload' for batchId: ${batchId}`);
+  // This is a stub implementation.
+  // A real implementation would attempt to signal a background job to stop.
+  return { success: true, batchId, message: 'Cancellation requested (stub response).' };
+});
+
 
 /**
  * Validate input parameters to prevent injection attacks

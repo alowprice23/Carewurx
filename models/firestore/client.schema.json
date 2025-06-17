@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Full name of the client."
+    },
+    "address": {
+      "type": "string",
+      "description": "Full address of the client."
+    },
+    "phone": {
+      "type": "string",
+      "description": "Primary phone number of the client."
+    },
+    "email": {
+      "type": "string",
+      "format": "email",
+      "description": "Primary email address of the client."
+    },
+    "careNeeds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of care needs for the client (e.g., medication reminder, meal prep)."
+    },
+    "isActive": {
+        "type": "boolean",
+        "description": "Whether the client's profile is currently active.",
+        "default": true
+    },
+    "additionalNotes": {
+        "type": "string",
+        "description": "Any additional notes about the client."
+    }
+  },
+  "required": ["name"]
+}
