@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Carewurx</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app-container">
+    <nav id="sidebar">
+      <div class="sidebar-header">
+        <h3>Carewurx</h3>
+      </div>
+      <ul class="list-unstyled components">
+        <li class="active">
+          <a href="#" data-view="dashboard">Dashboard</a>
+        </li>
+        <li>
+          <a href="#" data-view="clients">Clients</a>
+        </li>
+        <li>
+          <a href="#" data-view="caregivers">Caregivers</a>
+        </li>
+      </ul>
+    </nav>
+
+    <div id="content">
+      <header>
+        <button id="add-schedule-button">Add Schedule</button>
+      </header>
+      
+      <main>
+        <div id="dashboard-view" class="view">
+          <div id="analysis-dashboard-container"></div>
+          <div id="notification-center-container"></div>
+          <div id="opportunity-viewer-container"></div>
+        </div>
+        <div id="clients-view" class="view" style="display: none;">
+          <h2>Clients</h2>
+          <div id="client-list-container"></div>
+        </div>
+        <div id="caregivers-view" class="view" style="display: none;">
+          <h2>Caregivers</h2>
+          <div id="caregiver-list-container"></div>
+        </div>
+        <div id="client-profile-view" class="view" style="display: none;">
+          <div id="client-profile-container"></div>
+        </div>
+        <div id="caregiver-profile-view" class="view" style="display: none;">
+          <div id="caregiver-profile-container"></div>
+        </div>
+      </main>
+      
+      <footer>
+        <div id="chat-container">
+          <div id="chat-messages"></div>
+          <form id="chat-form">
+            <input type="text" id="chat-input" placeholder="Ask Lexxi or Bruce...">
+            <button type="submit">Send</button>
+          </form>
+        </div>
+      </footer>
+    </div>
+  </div>
+  
+  <div id="schedule-editor-container" class="modal" style="display: none;"></div>
+  
+  <script src="renderer.js"></script>
+</body>
+</html>

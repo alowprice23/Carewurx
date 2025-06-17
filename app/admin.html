@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin - Carewurx</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-firestore.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="nav-tabs">
+            <button class="tab-button" onclick="window.location.href='index.html'">Home</button>
+            <button class="tab-button active">Admin Panel</button>
+        </div>
+        
+        <div class="main-content">
+            <div class="header-with-button">
+                <h1>Admin Dashboard</h1>
+                <!-- Logout button will be added here by JavaScript -->
+            </div>
+            
+            <div class="card">
+                <h2>User Management</h2>
+                <p>Approve or deny access to Carewurx. Only approved users can log in to the system.</p>
+                
+                <!-- User list will be populated here -->
+                <ul id="user-list" class="user-list"></ul>
+            </div>
+        </div>
+    </div>
+    <script src="admin.js"></script>
+</body>
+</html>

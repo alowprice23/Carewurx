@@ -1,0 +1,7 @@
+BANrZ5SQLWG0jpmF8u-YWHmQlWeaKVqGgLU9eYsgy6F2QzTcDX1gg4LGEJ5oVrG-CnzSV5tepL4UtKysNzVnWBw
+
+import { getMessaging, getToken } from "firebase/messaging";
+
+const messaging = getMessaging();
+// Add the public key generated from the console here.
+getToken(messaging, {vapidKey: "BKagOny0KF_2pCJQ3m....moL0ewzQ8rZu"});
