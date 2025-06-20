@@ -436,6 +436,101 @@ class AgentService {
       throw error;
     }
   }
+
+  async getApiKeyStatuses() {
+    if (!this.isElectronAvailable || !window.electronAPI || !window.electronAPI.getApiKeyStatuses) {
+      console.warn('AgentService: getApiKeyStatuses not available. Returning mock/default status.');
+      return {
+        groq: { isSet: false, isValid: false, lastValidated: null },
+        openai: { isSet: false, isValid: false, lastValidated: null },
+        anthropic: { isSet: false, isValid: false, lastValidated: null },
+      };
+    }
+    try {
+      const user = firebase.auth().currentUser;
+      if (!user) throw new Error('Authentication required to get API key statuses.');
+      const idToken = await user.getIdToken();
+      return await window.electronAPI.getApiKeyStatuses({ idToken });
+    } catch (error) {
+      console.error('Error getting API key statuses:', error);
+      throw error;
+    }
+  }
+
+  async saveApiKey(provider, apiKey) {
+    if (!this.isElectronAvailable || !window.electronAPI || !window.electronAPI.saveApiKey) {
+      // In browser mode, perhaps simulate success or store in localStorage (less secure)
+      console.warn(`AgentService: saveApiKey for ${provider} not available. Mocking success.`);
+      await delay(200);
+      if (!apiKey) return { success: true, message: `${provider} API key cleared (mock).` };
+      return { success: true, message: `${provider} API key saved (mock).` };
+    }
+    try {
+      const user = firebase.auth().currentUser;
+      if (!user) throw new Error('Authentication required to save API key.');
+      const idToken = await user.getIdToken();
+      return await window.electronAPI.saveApiKey({ provider, apiKey, idToken });
+    } catch (error) {
+      console.error(`Error saving API key for ${provider}:`, error);
+      throw error;
+    }
+  }
+
+  async deleteApiKey(provider) {
+    if (!this.isElectronAvailable || !window.electronAPI || !window.electronAPI.deleteApiKey) {
+      console.warn(`AgentService: deleteApiKey for ${provider} not available. Mocking success.`);
+      await delay(200);
+      return { success: true, message: `${provider} API key deleted (mock).` };
+    }
+    try {
+      const user = firebase.auth().currentUser;
+      if (!user) throw new Error('Authentication required to delete API key.');
+      const idToken = await user.getIdToken();
+      return await window.electronAPI.deleteApiKey({ provider, idToken });
+    } catch (error) {
+      console.error(`Error deleting API key for ${provider}:`, error);
+      throw error;
+    }
+  }
+
+  async validateApiKey(provider, apiKeyToValidate) {
+    if (!this.isElectronAvailable || !window.electronAPI || !window.electronAPI.validateApiKey) {
+      console.warn(`AgentService: validateApiKey for ${provider} not available. Mocking as valid.`);
+      await delay(500);
+      if (!apiKeyToValidate) return { isValid: false, message: 'API key to validate was not provided (mock).' };
+      return { isValid: true, message: `${provider} API key is valid (mock).` };
+    }
+    try {
+      const user = firebase.auth().currentUser;
+      if (!user) throw new Error('Authentication required to validate API key.');
+      const idToken = await user.getIdToken();
+      return await window.electronAPI.validateApiKey({ provider, apiKeyToValidate, idToken });
+    } catch (error) {
+      console.error(`Error validating API key for ${provider}:`, error);
+      throw error;
+    }
+  }
+
+  async getApiUsageStats() {
+    if (!this.isElectronAvailable || !window.electronAPI || !window.electronAPI.getApiUsageStats) {
+       console.warn('AgentService: getApiUsageStats not available. Returning mock stats.');
+      await delay(200);
+      return {
+        groq: { requests: 0, tokens: 0, lastRequest: null },
+        openai: { requests: 0, tokens: 0, lastRequest: null },
+        anthropic: { requests: 0, tokens: 0, lastRequest: null },
+      };
+    }
+    try {
+      const user = firebase.auth().currentUser;
+      if (!user) throw new Error('Authentication required to get API usage stats.');
+      const idToken = await user.getIdToken();
+      return await window.electronAPI.getApiUsageStats({ idToken });
+    } catch (error) {
+      console.error('Error getting API usage stats:', error);
+      throw error;
+    }
+  }
 }
 
 // Create and export singleton instance

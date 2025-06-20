@@ -145,6 +145,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAgentSuggestions: (entityId, entityType) => secureIPCInvoke('agent:getSuggestions', entityId, entityType),
   startAgentConversation: (agentName, initialMessage) => secureIPCInvoke('agent:startConversation', agentName, initialMessage),
   getAgentResponse: (conversationId, message) => secureIPCInvoke('agent:getResponse', conversationId, message),
+
+  // API Key Management (added under electronAPI directly, matching other agent: handlers)
+  saveApiKey: (params) => secureIPCInvoke('agent:saveApiKey', params), // { provider, apiKey, idToken }
+  getApiKeyStatuses: (params) => secureIPCInvoke('agent:getApiKeyStatuses', params), // { idToken }
+  deleteApiKey: (params) => secureIPCInvoke('agent:deleteApiKey', params), // { provider, idToken }
+  validateApiKey: (params) => secureIPCInvoke('agent:validateApiKey', params), // { provider, apiKeyToValidate, idToken }
+  getApiUsageStats: (params) => secureIPCInvoke('agent:getApiUsageStats', params), // { idToken }
   
   // Schedule conflict detection and resolution
   checkScheduleConflicts: (scheduleId) => secureIPCInvoke('scheduler:checkConflicts', scheduleId),

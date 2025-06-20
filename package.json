@@ -28,7 +28,9 @@
     "mammoth": "^1.9.1",
     "pdf-parse": "^1.1.1",
     "styled-jsx": "^5.1.7",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "openai": "^4.0.0",
+    "@anthropic-ai/sdk": "^0.20.0"
   },
   "devDependencies": {
     "@babel/preset-env": "^7.27.2",

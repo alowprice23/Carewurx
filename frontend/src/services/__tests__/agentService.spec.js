@@ -23,6 +23,12 @@ const mockElectronAPIAgent = {
   rejectOpportunity: jest.fn(),
   getAgentInsights: jest.fn(),
   getAgentSuggestions: jest.fn(),
+  // Add new API key management methods
+  getApiKeyStatuses: jest.fn(),
+  saveApiKey: jest.fn(),
+  deleteApiKey: jest.fn(),
+  validateApiKey: jest.fn(),
+  getApiUsageStats: jest.fn(),
 };
 
 global.window = Object.create(window);
@@ -205,6 +211,140 @@ describe('AgentService', () => {
       const result = await agentService.scanForOpportunities({});
       expect(result).toEqual(expect.any(Array)); // Returns mock opportunities
       expect(mockElectronAPIAgent.scanForOpportunities).not.toHaveBeenCalled();
+    });
+  });
+
+  // --- New API Key Management Method Tests ---
+
+  describe('getApiKeyStatuses', () => {
+    it('should call electronAPI.getApiKeyStatuses with idToken in Electron mode when authenticated', async () => {
+      agentService.isElectronAvailable = true;
+      mockCurrentUser = { getIdToken: mockGetIdToken };
+      const mockStatuses = { groq: { isSet: true, isValid: true, lastValidated: 'timestamp' }};
+      mockElectronAPIAgent.getApiKeyStatuses.mockResolvedValue(mockStatuses);
+
+      const result = await agentService.getApiKeyStatuses();
+      expect(mockGetIdToken).toHaveBeenCalledTimes(1);
+      expect(mockElectronAPIAgent.getApiKeyStatuses).toHaveBeenCalledWith({ idToken: mockToken });
+      expect(result).toEqual(mockStatuses);
+    });
+
+    it('should throw auth error for getApiKeyStatuses in Electron mode if not authenticated', async () => {
+      agentService.isElectronAvailable = true;
+      mockCurrentUser = null;
+      await expect(agentService.getApiKeyStatuses()).rejects.toThrow('Authentication required');
+      expect(mockElectronAPIAgent.getApiKeyStatuses).not.toHaveBeenCalled();
+    });
+
+    it('should return mock statuses for getApiKeyStatuses in browser mode', async () => {
+      agentService.isElectronAvailable = false;
+      const result = await agentService.getApiKeyStatuses();
+      expect(result).toEqual({
+        groq: { isSet: false, isValid: false, lastValidated: null },
+        openai: { isSet: false, isValid: false, lastValidated: null },
+        anthropic: { isSet: false, isValid: false, lastValidated: null },
+      });
+      expect(mockElectronAPIAgent.getApiKeyStatuses).not.toHaveBeenCalled();
+    });
+
+    it('should throw error if electronAPI.getApiKeyStatuses call fails', async () => {
+      agentService.isElectronAvailable = true;
+      mockCurrentUser = { getIdToken: mockGetIdToken };
+      mockElectronAPIAgent.getApiKeyStatuses.mockRejectedValueOnce(new Error('IPC Error'));
+      await expect(agentService.getApiKeyStatuses()).rejects.toThrow('IPC Error');
+    });
+  });
+
+  describe('saveApiKey', () => {
+    const provider = 'groq';
+    const apiKey = 'test-key';
+
+    it('should call electronAPI.saveApiKey with params in Electron mode when authenticated', async () => {
+      agentService.isElectronAvailable = true;
+      mockCurrentUser = { getIdToken: mockGetIdToken };
+      mockElectronAPIAgent.saveApiKey.mockResolvedValue({ success: true });
+
+      const result = await agentService.saveApiKey(provider, apiKey);
+      expect(mockGetIdToken).toHaveBeenCalledTimes(1);
+      expect(mockElectronAPIAgent.saveApiKey).toHaveBeenCalledWith({ provider, apiKey, idToken: mockToken });
+      expect(result).toEqual({ success: true });
+    });
+
+    it('should return mock success for saveApiKey in browser mode', async () => {
+      agentService.isElectronAvailable = false;
+      const result = await agentService.saveApiKey(provider, apiKey);
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('(mock)');
+      expect(mockElectronAPIAgent.saveApiKey).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteApiKey', () => {
+    const provider = 'openai';
+
+    it('should call electronAPI.deleteApiKey with params in Electron mode when authenticated', async () => {
+      agentService.isElectronAvailable = true;
+      mockCurrentUser = { getIdToken: mockGetIdToken };
+      mockElectronAPIAgent.deleteApiKey.mockResolvedValue({ success: true });
+
+      const result = await agentService.deleteApiKey(provider);
+      expect(mockGetIdToken).toHaveBeenCalledTimes(1);
+      expect(mockElectronAPIAgent.deleteApiKey).toHaveBeenCalledWith({ provider, idToken: mockToken });
+      expect(result).toEqual({ success: true });
+    });
+
+     it('should return mock success for deleteApiKey in browser mode', async () => {
+      agentService.isElectronAvailable = false;
+      const result = await agentService.deleteApiKey(provider);
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('(mock)');
+      expect(mockElectronAPIAgent.deleteApiKey).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('validateApiKey', () => {
+    const provider = 'anthropic';
+    const apiKeyToValidate = 'validate-this-key';
+
+    it('should call electronAPI.validateApiKey with params in Electron mode when authenticated', async () => {
+      agentService.isElectronAvailable = true;
+      mockCurrentUser = { getIdToken: mockGetIdToken };
+      mockElectronAPIAgent.validateApiKey.mockResolvedValue({ isValid: true });
+
+      const result = await agentService.validateApiKey(provider, apiKeyToValidate);
+      expect(mockGetIdToken).toHaveBeenCalledTimes(1);
+      expect(mockElectronAPIAgent.validateApiKey).toHaveBeenCalledWith({ provider, apiKeyToValidate, idToken: mockToken });
+      expect(result).toEqual({ isValid: true });
+    });
+
+    it('should return mock validation for validateApiKey in browser mode', async () => {
+      agentService.isElectronAvailable = false;
+      const result = await agentService.validateApiKey(provider, apiKeyToValidate);
+      expect(result.isValid).toBe(true);
+      expect(result.message).toContain('(mock)');
+      expect(mockElectronAPIAgent.validateApiKey).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getApiUsageStats', () => {
+    it('should call electronAPI.getApiUsageStats with idToken in Electron mode when authenticated', async () => {
+      agentService.isElectronAvailable = true;
+      mockCurrentUser = { getIdToken: mockGetIdToken };
+      const mockStats = { groq: { requests: 10, tokens: 1000 }};
+      mockElectronAPIAgent.getApiUsageStats.mockResolvedValue(mockStats);
+
+      const result = await agentService.getApiUsageStats();
+      expect(mockGetIdToken).toHaveBeenCalledTimes(1);
+      expect(mockElectronAPIAgent.getApiUsageStats).toHaveBeenCalledWith({ idToken: mockToken });
+      expect(result).toEqual(mockStats);
+    });
+
+    it('should return mock stats for getApiUsageStats in browser mode', async () => {
+      agentService.isElectronAvailable = false;
+      const result = await agentService.getApiUsageStats();
+      expect(result).toHaveProperty('groq');
+      expect(result.openai.requests).toBe(0);
+      expect(mockElectronAPIAgent.getApiUsageStats).not.toHaveBeenCalled();
     });
   });
 });
