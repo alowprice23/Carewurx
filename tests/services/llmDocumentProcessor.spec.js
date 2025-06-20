@@ -92,32 +92,55 @@ describe('LLMDocumentProcessor', () => {
         fs.readFile.mockResolvedValue(JSON.stringify(mockClientSchema));
       });
 
-      it('should call llmService.normalizeData for each record', async () => {
-        mockLLMService.normalizeData.mockImplementation(async (record, schema) => ({ ...record, normalized: true }));
+      it('should call llmService.generateStructuredResponse for each record for normalization', async () => {
+        // Simulate LLM returning the record itself (or a slightly modified one)
+        mockLLMService.generateStructuredResponse.mockImplementation(async (prompt) => {
+          // Extract the record from the prompt for mock processing
+          const match = prompt.match(/JSON Object to normalize\/validate:\s*---\s*(\{[\s\S]*?\})\s*---/);
+          if (match && match[1]) {
+            const record = JSON.parse(match[1]);
+            return { ...record, normalizedByLLM: true };
+          }
+          return null;
+        });
 
         const result = await processor.processDocument(excelData, entityType);
 
-        expect(mockLLMService.normalizeData).toHaveBeenCalledTimes(excelData.length);
-        expect(mockLLMService.normalizeData).toHaveBeenCalledWith(excelData[0], mockClientSchema, entityType);
-        expect(mockLLMService.normalizeData).toHaveBeenCalledWith(excelData[1], mockClientSchema, entityType);
+        expect(mockLLMService.generateStructuredResponse).toHaveBeenCalledTimes(excelData.length);
+        // Check a part of the prompt for the first call
+        expect(mockLLMService.generateStructuredResponse.mock.calls[0][0]).toContain('JSON Object to normalize/validate');
+        expect(mockLLMService.generateStructuredResponse.mock.calls[0][0]).toContain(JSON.stringify(excelData[0], null, 2));
         expect(result.length).toBe(excelData.length);
-        expect(result[0]).toHaveProperty('normalized', true);
+        expect(result[0]).toHaveProperty('normalizedByLLM', true);
       });
 
-      it('should filter out records that fail normalization (return null/undefined)', async () => {
-        mockLLMService.normalizeData
-          .mockResolvedValueOnce({ ...excelData[0], normalized: true }) // First record good
-          .mockResolvedValueOnce(null); // Second record fails
+      it('should filter out records that fail normalization (LLM returns null)', async () => {
+        mockLLMService.generateStructuredResponse
+          .mockImplementationOnce(async (prompt) => { // First record good
+            const match = prompt.match(/JSON Object to normalize\/validate:\s*---\s*(\{[\s\S]*?\})\s*---/);
+            const record = JSON.parse(match[1]);
+            return { ...record, normalizedByLLM: true };
+          })
+          .mockResolvedValueOnce(null); // Second record fails (LLM returns null)
 
         const result = await processor.processDocument(excelData, entityType);
         expect(result.length).toBe(1);
         expect(result[0].Name).toBe('Client A');
       });
 
-      it('should throw if normalizeData throws an error', async () => {
-        mockLLMService.normalizeData.mockRejectedValue(new Error('Normalization failed'));
+      it('should throw if generateStructuredResponse for normalization throws an error', async () => {
+        mockLLMService.generateStructuredResponse.mockRejectedValue(new Error('Normalization failed via LLM'));
         await expect(processor.processDocument(excelData, entityType))
-            .rejects.toThrow('Failed to normalize structured data for client. Normalization failed');
+            .rejects.toThrow('Failed to normalize structured data for client. Normalization failed via LLM');
+      });
+
+      it('should handle unparsable string response from LLM during normalization', async () => {
+        mockLLMService.generateStructuredResponse.mockResolvedValue("unparsable json string");
+        const result = await processor.processDocument(excelData, entityType);
+        // Expect empty because parsing the string fails, leading to `normalizedRecord` being null,
+        // and thus the record is skipped. The console.warn would be called.
+        expect(result).toEqual([]);
+        // Optionally, check for console.warn if that's easily testable
       });
     });
 

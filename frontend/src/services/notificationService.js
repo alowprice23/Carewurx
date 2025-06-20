@@ -2,9 +2,9 @@
  * Notification Service
  * Provides interface to notification system functionality with browser fallback
  */
-
-// Import the firebaseService to check if we're in Electron mode
-import { firebaseService } from './index';
+import firebase from './firebase'; // For auth - Corrected path
+// NotificationService uses its own isElectronAvailable flag
+// import { isElectronAvailable as isFirebaseServiceElectronAvailable } from './firebaseService';
 
 // Helper function to simulate network delay
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -111,10 +111,10 @@ class NotificationService {
   async getNotifications(options = {}) {
     try {
       if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.getNotifications(options);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to get notifications.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.getNotifications({ idToken, options });
       } else {
         // Browser-only mode: filter mock notifications
         console.log('Notification Service: Using mock notifications in browser-only mode');
@@ -158,10 +158,10 @@ class NotificationService {
   async markAsRead(notificationId) {
     try {
       if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.markAsRead(notificationId);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to mark notification as read.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.markAsRead({ idToken, notificationId });
       } else {
         // Browser-only mode: update mock notification
         console.log('Notification Service: Marking mock notification as read in browser-only mode');
@@ -189,10 +189,10 @@ class NotificationService {
   async markAllAsRead() {
     try {
       if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.markAllNotificationsAsRead();
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to mark all notifications as read.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.markAllNotificationsAsRead({ idToken });
       } else {
         // Browser-only mode: update all mock notifications
         console.log('Notification Service: Marking all mock notifications as read in browser-only mode');
@@ -223,10 +223,10 @@ class NotificationService {
   async createNotification(notificationData) {
     try {
       if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.createNotification(notificationData);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to create notification.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.createNotification({ idToken, notificationData });
       } else {
         // Browser-only mode: create mock notification
         console.log('Notification Service: Creating mock notification in browser-only mode');
@@ -264,10 +264,10 @@ class NotificationService {
   async deleteNotification(notificationId) {
     try {
       if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.deleteNotification(notificationId);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to delete notification.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.deleteNotification({ idToken, notificationId });
       } else {
         // Browser-only mode: delete mock notification
         console.log('Notification Service: Deleting mock notification in browser-only mode');
@@ -326,6 +326,36 @@ class NotificationService {
       return notifications.length;
     } catch (error) {
       console.error('Error getting notification count:', error);
+      throw error;
+    }
+  }
+
+  async getAvailableRecipients() {
+    try {
+      if (this.isElectronAvailable) {
+        // Check if the specific method exists on electronAPI
+        if (!window.electronAPI || !window.electronAPI.getAvailableRecipients) {
+          console.error('Electron API getAvailableRecipients not available');
+          throw new Error('Electron API not available - backend connection missing for recipients.');
+        }
+        // No ID token needed for this specific call as per task description (admin-level data fetch)
+        return await window.electronAPI.getAvailableRecipients();
+      } else {
+        // Browser-only mode: return mock recipients
+        console.log('Notification Service: Using mock available recipients in browser-only mode');
+        await delay(300); // Simulate network delay
+        return [
+          { id: 'admin1', name: 'Admin User One', type: 'admin' },
+          { id: 'user1', name: 'System User Bob', type: 'user' },
+          { id: 'client1', name: 'Client Alpha', type: 'client' },
+          { id: 'client2', name: 'Client Beta', type: 'client' },
+          { id: 'caregiver1', name: 'Caregiver Gamma', type: 'caregiver' },
+          { id: 'caregiver2', name: 'Caregiver Delta', type: 'caregiver' },
+        ];
+      }
+    } catch (error) {
+      console.error('Error getting available recipients:', error);
+      // Ensure the error is re-thrown so calling code can handle it
       throw error;
     }
   }

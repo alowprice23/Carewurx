@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { notificationService } from '../services';
+import { notificationService, agentService } from '../services'; // Import agentService
 
 /**
  * Enhanced Notification Center Component
@@ -113,43 +113,86 @@ const NotificationCenter = () => {
   
   // Handle notification action
   const handleAction = async (notification, action) => {
+    if (!notification || !notification.entityId) {
+      console.error("Cannot handle action: notification or entityId is missing.", notification);
+      // Optionally, display an error to the user here
+      return;
+    }
+
+    const wasNotificationUnread = !notification.read; // Capture read status before any action
+
     try {
-      if (action === 'accept') {
-        // Different handling based on notification type
-        if (notification.entityType === 'opportunity') {
-          // Opportunity-related actions would go here
+      let actionSuccess = false;
+      let actionError = null;
+
+      if (notification.entityType === 'opportunity') {
+        if (action === 'accept') {
           console.log('Accepting opportunity:', notification.entityId);
-        } else if (notification.entityType === 'schedule') {
-          // Schedule-related actions would go here
-          console.log('Accepting schedule:', notification.entityId);
-        }
-      } else if (action === 'reject') {
-        // Rejection handling
-        if (notification.entityType === 'opportunity') {
+          const result = await agentService.applyOpportunity(notification.entityId);
+          actionSuccess = result.success;
+          if (!actionSuccess) actionError = result.message || 'Failed to accept opportunity.';
+        } else if (action === 'reject') {
           console.log('Rejecting opportunity:', notification.entityId);
-        } else if (notification.entityType === 'schedule') {
-          console.log('Rejecting schedule:', notification.entityId);
+          const result = await agentService.rejectOpportunity(notification.entityId, "Rejected via notification");
+          actionSuccess = result.success;
+          if (!actionSuccess) actionError = result.message || 'Failed to reject opportunity.';
+        } else {
+          console.log(`Unsupported action "${action}" for opportunity ${notification.entityId}`);
+          actionSuccess = true; // Or false if we want to indicate error for unsupported actions
         }
+      } else if (notification.entityType === 'schedule') {
+        // Placeholder for schedule actions
+        console.log(`Action "${action}" for schedule:`, notification.entityId);
+        actionSuccess = true; // Assume success for placeholder
+      } else {
+        // Generic action handling or navigation
+        console.log(`Action "${action}" for entityType "${notification.entityType}" with ID "${notification.entityId}"`);
+        // Example: Programmatic navigation or calling a prop function
+        // window.location.hash = `/${notification.entityType}/${notification.entityId}`; // Simple example
+        actionSuccess = true; // Assume success for placeholder
       }
-      
-      // Mark as read after action
-      await notificationService.markAsRead(notification.id);
-      
-      // Update UI
-      setNotifications(prev => 
-        prev.map(n => 
-          n.id === notification.id 
-            ? { ...n, read: true, actionTaken: action } 
-            : n
-        )
-      );
-      
-      if (!notification.read) {
-        setUnreadCount(prev => prev - 1);
+
+      if (actionSuccess) {
+        // Mark as read after successful action
+        if (wasNotificationUnread) { // Only call markAsRead if it was originally unread
+          await notificationService.markAsRead(notification.id);
+        }
+
+        // Update UI to reflect action taken and mark as read
+        setNotifications(prev =>
+          prev.map(n =>
+            n.id === notification.id
+              ? { ...n, read: true, actionTaken: action }
+              : n
+          )
+        );
+
+        if (wasNotificationUnread) {
+          setUnreadCount(prev => Math.max(0, prev - 1));
+        }
+      } else {
+        console.error(`Action "${action}" for entity ${notification.entityId} reported as not successful. Error: ${actionError}`);
+        // Optionally, display an error to the user that the action failed.
+        // For example, by adding a temporary error message to the notification item in the UI.
+        setNotifications(prev =>
+          prev.map(n =>
+            n.id === notification.id
+              ? { ...n, actionError: actionError || `Action '${action}' failed.` }
+              : n
+          )
+        );
       }
       
     } catch (error) {
-      console.error(`Error handling ${action} action:`, error);
+      console.error(`Error handling ${action} action for notification ${notification.id}:`, error);
+      // Update UI to show error for this specific notification
+       setNotifications(prev =>
+          prev.map(n =>
+            n.id === notification.id
+              ? { ...n, actionError: error.message || `Action '${action}' failed.` }
+              : n
+          )
+        );
     }
   };
   

@@ -1,3 +1,5 @@
+process.env.GROQ_API_KEY = 'mock-api-key-for-tests'; // Ensure LLMService in main.js doesn't fail on init
+
 // These tests cover the CURRENT MOCK IMPLEMENTATION of auth IPC handlers in main.js.
 // If/when the auth handlers are updated to use a real authentication service,
 // these tests will need to be significantly updated.
@@ -6,10 +8,13 @@
 // In a real test setup for Electron IPC, this would be more complex,
 // but here we test the handler's logic directly.
 
-const { validateParams } = require('../../main'); // Assuming validateParams is exported or accessible for testing
-                                            // If not, we'd have to replicate or skip its direct test here.
-                                            // For now, let's assume it's not easily testable without refactoring main.js
-                                            // and focus on the output of the handlers.
+// Mock validateParams as it's not easily exportable from main.js without refactor
+const mockValidateParams = jest.fn((param) => {
+  // Simple mock: allow strings and non-empty, disallow null/undefined for this test
+  if (typeof param === 'string' && param.length > 0) return true;
+  if (typeof param === 'object' && param !== null) return true; // Allow objects for future flexibility
+  return false;
+});
 
 describe('Backend Auth IPC Handlers (Current Mock Implementation)', () => {
   const mockEvent = {}; // Mock Electron event object
@@ -26,12 +31,16 @@ describe('Backend Auth IPC Handlers (Current Mock Implementation)', () => {
 
   // Logic for signIn as in main.js
   const handleSignIn = async (event, email, password) => {
-    // Simplified validation check for the purpose of this test, mirroring main.js's intent
-    // const isValid = validateParams(email) && validateParams(password);
-    // if (!isValid) throw new Error('Invalid input parameters');
-    // Actual validateParams is not easily callable here without export from main.js
+    const isValid = mockValidateParams(email) && mockValidateParams(password);
+    if (!isValid) {
+        // console.error(`SignIn Mock: Invalid params: email=${email}, password=${password}`);
+        throw new Error('Invalid input parameters');
+    }
 
-    if (email && password && typeof email === 'string' && typeof password === 'string') {
+    // In a real app, you would verify credentials against Firebase Auth
+    // and implement proper authentication
+    // This part remains mock as per main.js
+    // if (email && password && typeof email === 'string' && typeof password === 'string') {
       return {
         user: {
           uid: 'test-user-123',
@@ -76,8 +85,9 @@ describe('Backend Auth IPC Handlers (Current Mock Implementation)', () => {
     });
 
     it('should throw error for invalid email or password', async () => {
-      await expect(handleSignIn(mockEvent, null, 'password')).rejects.toThrow('Invalid email or password');
-      await expect(handleSignIn(mockEvent, 'test@example.com', null)).rejects.toThrow('Invalid email or password');
+      await expect(handleSignIn(mockEvent, null, 'password')).rejects.toThrow('Invalid input parameters');
+      await expect(handleSignIn(mockEvent, 'test@example.com', null)).rejects.toThrow('Invalid input parameters');
+      await expect(handleSignIn(mockEvent, '', 'password')).rejects.toThrow('Invalid input parameters');
     });
   });
 

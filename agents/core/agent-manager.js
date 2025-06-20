@@ -10,6 +10,8 @@ const ContextBuilder = require('../utils/context-builder');
 const ResponseParser = require('../utils/response-parser');
 const fs = require('fs');
 const path = require('path');
+const EnhancedScheduler = require('../../services/enhanced-scheduler');
+const { firebaseService: adminFirebaseService } = require('../../services/firebase'); // Alias to avoid conflict
 
 class AgentManager {
   constructor() {
@@ -20,6 +22,8 @@ class AgentManager {
     this.conversations = new Map();
     this.contextBuilder = null;
     this.responseParser = null;
+    this.enhancedScheduler = null;
+    this.firebaseService = null;
     
     // Circular integration tracking (to prevent infinite loops)
     this.circularReferences = new Map();
@@ -62,9 +66,16 @@ class AgentManager {
       // Initialize context builder and response parser
       this.contextBuilder = new ContextBuilder();
       this.responseParser = new ResponseParser();
+
+      if (!this.enhancedScheduler) {
+        this.enhancedScheduler = new EnhancedScheduler();
+      }
+      if (!this.firebaseService) {
+        this.firebaseService = adminFirebaseService;
+      }
       
       this.isInitialized = true;
-      console.log('Agent Manager initialized successfully with agents: Bruce, Lexxi');
+      console.log('Agent Manager initialized successfully with agents, scheduler, and firebase service.');
     } catch (error) {
       console.error('Failed to initialize Agent Manager:', error);
       throw error;
@@ -300,10 +311,52 @@ class AgentManager {
    * @returns {Promise<void>}
    */
   async handleScheduleCreate(userId, parameters) {
-    console.log(`Creating schedule for user ${userId}:`, parameters);
-    
-    // This would connect to the schedule service
-    // For now, just log the action
+    try {
+      if (!this.enhancedScheduler || !this.firebaseService) { // Ensure services are initialized
+        console.error('AgentManager services not initialized for handleScheduleCreate.');
+        // Attempt re-initialization or throw error if critical path
+        // For now, let's assume initialize() should have been called by processMessage
+        if (!this.isInitialized) await this.initialize(); // Make sure initialize was called
+        if (!this.enhancedScheduler) { // Still not there?
+            console.error('EnhancedScheduler is still not initialized after re-check.');
+            return; // Or throw an error
+        }
+      }
+
+      const { clientId, caregiverId, date, startTime, endTime, notes, clientName, caregiverName, tasks } = parameters;
+
+      // Basic validation for required fields
+      if (!clientId || !date || !startTime || !endTime) {
+        console.error('Missing required parameters for schedule creation:', parameters);
+        // Optionally, could return a structured error or throw
+        return;
+      }
+
+      const scheduleData = {
+        clientId,
+        caregiverId: caregiverId || null, // Ensure null if undefined
+        date,
+        startTime,
+        endTime,
+        notes: notes || '',
+        clientName: clientName || '', // Optional: client/caregiver names can be denormalized
+        caregiverName: caregiverName || '', // Optional
+        tasks: tasks || [],
+        status: (parameters.status !== undefined && parameters.status !== null && parameters.status !== '') ? parameters.status : 'pending_confirmation', // More explicit check
+        createdBy: userId, // Record which user (via agent) initiated this
+        // Timestamps should ideally be handled by Firestore (FieldValue.serverTimestamp())
+        // or consistently by the service creating the record.
+        // enhancedScheduler.createSchedule should handle this.
+      };
+
+      console.log(`AgentManager: Calling enhancedScheduler.createSchedule for user ${userId} with data:`, scheduleData);
+      const result = await this.enhancedScheduler.createSchedule(scheduleData);
+      console.log(`AgentManager: Schedule creation action for user ${userId} processed by EnhancedScheduler. Result:`, result);
+      // Potentially, add a system message to conversation history indicating success/failure here
+    } catch (error) {
+      console.error(`Error in AgentManager.handleScheduleCreate for user ${userId}:`, error);
+      // Potentially, add a system message to conversation history about the error
+    }
   }
 
   /**
@@ -313,10 +366,29 @@ class AgentManager {
    * @returns {Promise<void>}
    */
   async handleScheduleUpdate(userId, parameters) {
-    console.log(`Updating schedule for user ${userId}:`, parameters);
-    
-    // This would connect to the schedule service
-    // For now, just log the action
+    try {
+      if (!this.enhancedScheduler) {
+        console.error('AgentManager EnhancedScheduler not initialized for handleScheduleUpdate.');
+        if (!this.isInitialized) await this.initialize();
+        if (!this.enhancedScheduler) {
+             console.error('EnhancedScheduler is still not initialized after re-check.');
+             return;
+        }
+      }
+      const { scheduleId, ...updates } = parameters; // Assuming 'updates' is not a nested key, but rather remaining params are updates.
+                                                 // If parameters = { scheduleId, updates: { startTime: '10:00' } }, then use:
+                                                 // const { scheduleId, updates: actualUpdates } = parameters; and use actualUpdates below.
+      if (!scheduleId || Object.keys(updates).length === 0) {
+        console.error('Missing scheduleId or update data for schedule update:', parameters);
+        return;
+      }
+      const updateData = { ...updates, updatedBy: userId, updatedAt: new Date().toISOString() }; // Consider service handling timestamp
+      console.log(`AgentManager: Calling enhancedScheduler.updateSchedule for user ${userId}, schedule ${scheduleId} with data:`, updateData);
+      const result = await this.enhancedScheduler.updateSchedule(scheduleId, updateData);
+      console.log(`Schedule update action for user ${userId} (schedule ${scheduleId}) processed. Result:`, result);
+    } catch (error) {
+      console.error(`Error in AgentManager.handleScheduleUpdate for user ${userId} (schedule ${parameters.scheduleId}):`, error);
+    }
   }
 
   /**
@@ -326,10 +398,27 @@ class AgentManager {
    * @returns {Promise<void>}
    */
   async handleCaregiverAssign(userId, parameters) {
-    console.log(`Assigning caregiver for user ${userId}:`, parameters);
-    
-    // This would connect to the caregiver assignment service
-    // For now, just log the action
+    console.log(`AgentManager: handleCaregiverAssign for user ${userId} with params:`, parameters);
+    try {
+      if (!this.enhancedScheduler) {
+        console.error('AgentManager EnhancedScheduler not initialized for handleCaregiverAssign.');
+        if (!this.isInitialized) await this.initialize();
+        if (!this.enhancedScheduler) {
+            console.error('EnhancedScheduler is still not initialized after re-check.');
+            return;
+        }
+      }
+      const { scheduleId, caregiverId } = parameters;
+      if (!scheduleId || !caregiverId) {
+        console.error('Missing scheduleId or caregiverId for assignment:', parameters);
+        return;
+      }
+      console.log(`AgentManager: Calling enhancedScheduler.assignCaregiverToSchedule for user ${userId}, schedule ${scheduleId}, caregiver ${caregiverId}`);
+      const result = await this.enhancedScheduler.assignCaregiverToSchedule(scheduleId, caregiverId);
+      console.log(`Caregiver assignment action for user ${userId} (schedule ${scheduleId}, caregiver ${caregiverId}) processed. Result:`, result);
+    } catch (error) {
+      console.error(`Error in AgentManager.handleCaregiverAssign for user ${userId}:`, error);
+    }
   }
 
   /**
@@ -405,16 +494,21 @@ class AgentManager {
    * @returns {Promise<Array>} The discovered opportunities
    */
   async scanForOpportunities() {
+    if (!this.isInitialized || !this.firebaseService || !this.enhancedScheduler) {
+      await this.initialize();
+      if (!this.isInitialized || !this.firebaseService || !this.enhancedScheduler) {
+          console.error("AgentManager or its services not initialized for scanForOpportunities.");
+          return [];
+      }
+    }
     console.log('Scanning for scheduling opportunities...');
-    
     try {
-      // Get relevant data needed for opportunity scanning
-      const firebaseService = require('../../services/firebase').firebaseService;
-      const enhancedScheduler = require('../../services/enhanced-scheduler');
+      const firebaseService = this.firebaseService; // Use initialized instance
+      const enhancedScheduler = this.enhancedScheduler; // Use initialized instance
       
       // Get all schedules that are unassigned
       const unassignedSchedules = await firebaseService.db.collection('schedules')
-        .where('status', '==', 'unassigned')
+        .where('status', '==', 'Pending') // Or 'unassigned', based on actual status used
         .get()
         .then(snapshot => snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       
@@ -422,22 +516,26 @@ class AgentManager {
       const opportunities = [];
       
       for (const schedule of unassignedSchedules) {
+        if (!schedule.id) { // Guard against schedules without ID
+          console.warn("Skipping schedule due to missing ID:", schedule);
+          continue;
+        }
         // Find potential caregivers for this schedule
         const availableCaregivers = await enhancedScheduler.findAvailableCaregivers(schedule.id);
         
         if (availableCaregivers.length > 0) {
-          // Create an opportunity for this match
           const opportunity = {
-            id: `opp-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            id: `opp-${schedule.id}-${Date.now()}`, // More stable ID
             type: 'caregiver_assignment',
             schedule_id: schedule.id,
-            client_id: schedule.client_id,
-            client_name: schedule.client_name,
+            clientId: schedule.clientId,
+            clientName: schedule.clientName,
             date: schedule.date,
-            time_range: `${schedule.start_time} - ${schedule.end_time}`,
+            startTime: schedule.startTime,
+            endTime: schedule.endTime,
             candidates: availableCaregivers.slice(0, 3).map(c => ({
-              caregiver_id: c.caregiver.id,
-              caregiver_name: c.caregiver.name,
+              caregiverId: c.id,
+              name: c.name,
               score: c.score,
               distance: c.distance || 'unknown'
             })),
@@ -474,7 +572,14 @@ class AgentManager {
     console.log(`Getting details for opportunity ${opportunityId}`);
     
     try {
-      const firebaseService = require('../../services/firebase').firebaseService;
+      if (!this.isInitialized || !this.firebaseService) { // enhancedScheduler not directly used here, but firebaseService is
+        await this.initialize();
+        if (!this.isInitialized || !this.firebaseService) {
+            console.error("AgentManager or FirebaseService not initialized for getOpportunityDetails.");
+            return null;
+        }
+      }
+      const firebaseService = this.firebaseService;
       
       // Get the opportunity from the database
       const opportunity = await firebaseService.getDocument('opportunities', opportunityId);
@@ -484,24 +589,31 @@ class AgentManager {
       }
       
       // Enhance with additional information based on opportunity type
-      if (opportunity.type === 'caregiver_assignment') {
+      if (opportunity.type === 'caregiver_assignment' && opportunity.schedule_id) {
         // Get more information about the schedule
         const schedule = await firebaseService.getSchedule(opportunity.schedule_id);
         
         // Get more information about the client
-        const client = await firebaseService.getClient(opportunity.client_id);
+        const client = schedule && schedule.clientId ? await firebaseService.getClient(schedule.clientId) : null;
         
         // Get full details for each candidate caregiver
-        const enhancedCandidates = [];
-        
-        for (const candidate of opportunity.candidates) {
-          const caregiver = await firebaseService.getCaregiver(candidate.caregiver_id);
-          
-          enhancedCandidates.push({
-            ...candidate,
-            caregiver_details: caregiver,
-            availability: await firebaseService.getCaregiverAvailability(candidate.caregiver_id)
-          });
+        let enhancedCandidates = [];
+        if (opportunity.candidates && Array.isArray(opportunity.candidates)) {
+            for (const candidate of opportunity.candidates) {
+                const caregiverIdToFetch = candidate.caregiverId || candidate.caregiver_id; // Handle potential inconsistency
+                const nameToUse = candidate.name || candidate.caregiver_name; // Handle potential inconsistency
+                const caregiver = caregiverIdToFetch ? await firebaseService.getCaregiver(caregiverIdToFetch) : null;
+
+                enhancedCandidates.push({
+                  ...candidate,
+                  // Ensure consistent naming if needed by consumers, or keep as is from opportunity record
+                  caregiverId: caregiverIdToFetch,
+                  name: nameToUse,
+                  caregiver_details: caregiver,
+                  // Consider if fetching live availability here is too slow or should be a separate action
+                  // availability: caregiver ? await firebaseService.getCaregiverAvailability(caregiverIdToFetch) : null
+                });
+            }
         }
         
         return {
@@ -530,8 +642,15 @@ class AgentManager {
     console.log(`Applying opportunity ${opportunityId}`);
     
     try {
-      const firebaseService = require('../../services/firebase').firebaseService;
-      const enhancedScheduler = require('../../services/enhanced-scheduler');
+      if (!this.isInitialized || !this.firebaseService || !this.enhancedScheduler) {
+        await this.initialize();
+         if (!this.isInitialized || !this.firebaseService || !this.enhancedScheduler) {
+            console.error("AgentManager or its services not initialized for applyOpportunity.");
+            throw new Error("Services not initialized.");
+        }
+      }
+      const firebaseService = this.firebaseService;
+      const enhancedScheduler = this.enhancedScheduler;
       
       // Get the opportunity
       const opportunity = await firebaseService.getDocument('opportunities', opportunityId);
@@ -542,28 +661,37 @@ class AgentManager {
       
       // Apply the opportunity based on its type
       if (opportunity.type === 'caregiver_assignment') {
-        // Get the best candidate
-        const bestCandidate = opportunity.candidates[0];
+        if (!opportunity.candidates || opportunity.candidates.length === 0) {
+            throw new Error(`No candidates found for opportunity ${opportunityId}`);
+        }
+        const bestCandidate = opportunity.candidates[0]; // Assuming first is best
+        const caregiverIdToAssign = bestCandidate.caregiverId || bestCandidate.caregiver_id; // Handle variations
+
+        if (!opportunity.schedule_id || !caregiverIdToAssign) {
+            console.error("Missing schedule_id or caregiverId in opportunity data for apply:", opportunity);
+            throw new Error(`Missing schedule_id or valid caregiverId in opportunity data for ${opportunityId}`);
+        }
         
         // Assign the caregiver to the schedule
         const result = await enhancedScheduler.assignCaregiverToSchedule(
           opportunity.schedule_id, 
-          bestCandidate.caregiver_id
+          caregiverIdToAssign
         );
         
         // Update the opportunity status
         await firebaseService.updateDocument('opportunities', opportunityId, {
-          status: result.success ? 'applied' : 'failed',
+          status: result.success ? 'applied' : 'failed_apply', // More specific status
           applied_at: new Date().toISOString(),
-          applied_by: options.appliedBy || 'system',
+          applied_by: options.appliedBy || userId || 'system', // Include userId if available from action handler
           application_result: result,
+          selected_caregiver_id: caregiverIdToAssign,
           ...options
         });
         
         return {
           success: result.success,
-          opportunity,
-          result
+          opportunity, // Return the original opportunity for context
+          result // Return the result of assignment
         };
       }
       
@@ -584,14 +712,22 @@ class AgentManager {
     console.log(`Rejecting opportunity ${opportunityId}`);
     
     try {
-      const firebaseService = require('../../services/firebase').firebaseService;
+      if (!this.isInitialized || !this.firebaseService) {
+        await this.initialize();
+        if (!this.isInitialized || !this.firebaseService) {
+            console.error("AgentManager or FirebaseService not initialized for rejectOpportunity.");
+            throw new Error("FirebaseService not initialized.");
+        }
+      }
+      const firebaseService = this.firebaseService;
       
       // Update the opportunity status
       await firebaseService.updateDocument('opportunities', opportunityId, {
         status: 'rejected',
         rejected_at: new Date().toISOString(),
-        rejected_by: options.rejectedBy || 'system',
-        ...options
+        rejected_by: options.rejectedBy || 'system', // Default to system if not provided in options
+        rejection_reason: options.reason || '', // Ensure reason from params is used
+        ...options // Pass other options like notes if any
       });
       
       return {
@@ -843,8 +979,15 @@ class AgentManager {
     
     try {
       // Get the schedule with details
-      const firebaseService = require('../../services/firebase').firebaseService;
-      const enhancedScheduler = require('../../services/enhanced-scheduler');
+      if (!this.isInitialized || !this.firebaseService || !this.enhancedScheduler) {
+        await this.initialize();
+        if (!this.isInitialized || !this.firebaseService || !this.enhancedScheduler) {
+            console.error("AgentManager or its services not initialized for getInsightsForSchedule.");
+            return { scheduleId, insights: [{ type: 'error', message: 'Services not initialized.' }] };
+        }
+      }
+      const firebaseService = this.firebaseService;
+      const enhancedScheduler = this.enhancedScheduler;
       
       const schedule = await firebaseService.getSchedule(scheduleId);
       if (!schedule) {
@@ -852,12 +995,13 @@ class AgentManager {
       }
       
       // Get related client and caregiver (if assigned)
-      const client = schedule.client_id ? await firebaseService.getClient(schedule.client_id) : null;
-      const caregiver = schedule.caregiver_id ? await firebaseService.getCaregiver(schedule.caregiver_id) : null;
+      // Ensure field names used (schedule.clientId, schedule.caregiverId) match the actual data model from firebaseService.getSchedule()
+      const client = schedule.clientId ? await firebaseService.getClient(schedule.clientId) : null;
+      const caregiver = schedule.caregiverId ? await firebaseService.getCaregiver(schedule.caregiverId) : null;
       
       // Get potential caregivers if not assigned
-      const availableCaregivers = !schedule.caregiver_id ? 
-        await enhancedScheduler.findAvailableCaregivers(scheduleId) : [];
+      const availableCaregivers = !schedule.caregiverId && schedule.id ?
+        await enhancedScheduler.findAvailableCaregivers(schedule.id) : []; // Ensure schedule.id is passed
       
       // Generate insights
       const insights = {
@@ -869,27 +1013,33 @@ class AgentManager {
       // Add schedule status insight
       insights.insights.push({
         type: 'status',
-        message: schedule.caregiver_id ? 
+        message: schedule.caregiverId ? // Corrected to camelCase
           `This schedule is assigned to ${caregiver?.name || 'a caregiver'}.` : 
           'This schedule is currently unassigned.',
-        priority: schedule.caregiver_id ? 'low' : 'high'
+        priority: schedule.caregiverId ? 'low' : 'high' // Corrected to camelCase
       });
       
       // Add available caregivers insight
       if (availableCaregivers.length > 0) {
+        // Ensure availableCaregivers objects have .name and .score properties
+        const topCandidate = availableCaregivers[0];
+        const topCandidateName = topCandidate.name || (topCandidate.caregiver && topCandidate.caregiver.name) || 'Unknown Candidate';
+        const topCandidateScore = topCandidate.score || 'N/A';
+
         insights.insights.push({
           type: 'available_caregivers',
-          message: `There are ${availableCaregivers.length} available caregivers for this schedule. Top match: ${availableCaregivers[0].caregiver.name} (${availableCaregivers[0].score}% match).`,
+          message: `There are ${availableCaregivers.length} available caregivers for this schedule. Top match: ${topCandidateName} (${topCandidateScore}% match).`,
           priority: 'medium',
-          caregivers: availableCaregivers.slice(0, 3)
+          caregivers: availableCaregivers.slice(0, 3) // Assuming structure is { id, name, score, ... }
         });
       }
       
       // Add client preference insight if caregiver assigned
-      if (client && caregiver && schedule.caregiver_id) {
+      if (client && caregiver && schedule.caregiverId) { // Use schedule.caregiverId
         // Check if client has preferences that match/don't match caregiver
-        const preferenceMatch = client.preferences && caregiver.skills && 
-          client.preferences.some(pref => caregiver.skills.includes(pref));
+        const preferenceMatch = client.preferences && Array.isArray(client.preferences) &&
+                                caregiver.skills && Array.isArray(caregiver.skills) &&
+                                client.preferences.some(pref => caregiver.skills.includes(pref));
         
         if (preferenceMatch) {
           insights.insights.push({
@@ -911,6 +1061,7 @@ class AgentManager {
       const sameAreaSchedules = otherSchedules.filter(s => 
         s.id !== scheduleId && 
         s.location && schedule.location && 
+        typeof this.areLocationsClose === 'function' &&
         this.areLocationsClose(s.location, schedule.location)
       );
       
@@ -940,7 +1091,14 @@ class AgentManager {
     console.log(`Getting suggestions for ${entityType} ${entityId}`);
     
     try {
-      const firebaseService = require('../../services/firebase').firebaseService;
+      if (!this.isInitialized || !this.firebaseService) {
+        await this.initialize();
+        if (!this.isInitialized || !this.firebaseService) {
+            console.error("AgentManager or FirebaseService not initialized for getSuggestions.");
+            return { entityId, entityType, suggestions: [{ type: 'error', message: 'FirebaseService not initialized.' }] };
+        }
+      }
+      const firebaseService = this.firebaseService;
       
       let entity;
       let suggestions = {
@@ -961,7 +1119,7 @@ class AgentManager {
         const schedules = await firebaseService.getSchedulesByClientId(entityId);
         
         // Check for unassigned schedules
-        const unassignedSchedules = schedules.filter(s => !s.caregiver_id);
+        const unassignedSchedules = schedules.filter(s => !s.caregiverId); // Corrected: s.caregiverId
         if (unassignedSchedules.length > 0) {
           suggestions.suggestions.push({
             type: 'unassigned_schedules',
@@ -1053,7 +1211,7 @@ class AgentManager {
         
         // Check if caregiver has availability
         const availability = await firebaseService.getCaregiverAvailability(entityId);
-        if (!availability || Object.keys(availability).length === 0) {
+        if (!availability || !availability.regularSchedule || availability.regularSchedule.length === 0) { // More robust check
           suggestions.suggestions.push({
             type: 'missing_availability',
             message: `${entity.name} doesn't have any specified availability. Adding availability can improve scheduling.`,
@@ -1097,4 +1255,4 @@ class AgentManager {
   }
 }
 
-module.exports = new AgentManager();
+module.exports = AgentManager; // Export the class itself

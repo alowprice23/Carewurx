@@ -5,10 +5,9 @@ import { notificationService } from '../services';
  * Availability Manager Component
  * 
  * This component allows caregivers to manage their regular availability patterns
- * and request time off. It provides a weekly calendar view for setting regular
- * patterns and a separate interface for time-off requests.
+ * and request time off. This component updates its parent with any changes to availability.
  */
-const AvailabilityManager = ({ caregiverId, initialAvailability = null, onSave }) => {
+const AvailabilityManager = ({ initialAvailability = null, onAvailabilityChange }) => {
   // Days of week for display
   const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   
@@ -38,18 +37,27 @@ const AvailabilityManager = ({ caregiverId, initialAvailability = null, onSave }
     status: 'Pending'
   });
   
-  // Loading and error states
-  const [isLoading, setIsLoading] = useState(false);
+  // Loading and error states for internal validation
   const [error, setError] = useState(null);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  // saveSuccess is removed as parent handles saving status
   
-  // Initialize component with existing availability data
+  // Initialize component with existing availability data and propagate changes
   useEffect(() => {
-    if (initialAvailability) {
-      setRegularSchedule(initialAvailability.regularSchedule || []);
-      setTimeOff(initialAvailability.timeOff || []);
-    }
+    const newRegularSchedule = initialAvailability?.regularSchedule || [];
+    const newTimeOff = initialAvailability?.timeOff || [];
+    setRegularSchedule(newRegularSchedule);
+    setTimeOff(newTimeOff);
+    // No direct call to onAvailabilityChange here, as it's just initialization
+    // Or, if parent needs to be synced even with initial prop, then call it.
+    // For now, assuming parent passes initial state and expects changes from interactions.
   }, [initialAvailability]);
+
+  // Propagate changes to parent whenever local availability state changes
+  useEffect(() => {
+    if (onAvailabilityChange) {
+      onAvailabilityChange({ regularSchedule, timeOff });
+    }
+  }, [regularSchedule, timeOff, onAvailabilityChange]);
   
   // Handle input change for new schedule entry
   const handleScheduleInputChange = (e) => {
@@ -138,46 +146,7 @@ const AvailabilityManager = ({ caregiverId, initialAvailability = null, onSave }
     setTimeOff(prev => prev.filter((_, i) => i !== index));
   };
   
-  // Save all availability settings
-  const handleSaveAvailability = async () => {
-    if (!caregiverId) {
-      setError('Caregiver ID is required');
-      return;
-    }
-    
-    setIsLoading(true);
-    setError(null);
-    setSaveSuccess(false);
-    
-    try {
-      // Prepare availability data
-      const availabilityData = {
-        regularSchedule,
-        timeOff
-      };
-      
-      // Call the onSave callback with the availability data
-      if (onSave) {
-        await onSave(caregiverId, availabilityData);
-      }
-      
-      setSaveSuccess(true);
-      notificationService.showNotification(
-        'Availability settings saved successfully',
-        'success'
-      );
-    } catch (error) {
-      console.error('Error saving availability settings:', error);
-      setError('Failed to save availability settings. Please try again.');
-      
-      notificationService.showNotification(
-        'Failed to save availability settings',
-        'error'
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Removed handleSaveAvailability as parent will handle saving.
   
   // Format time for display
   const formatTime = (timeString) => {
@@ -209,15 +178,11 @@ const AvailabilityManager = ({ caregiverId, initialAvailability = null, onSave }
       
       {error && (
         <div className="error-message">
-          {error}
+          {error} {/* Internal form validation errors can still be shown */}
         </div>
       )}
       
-      {saveSuccess && (
-        <div className="success-message">
-          Availability settings saved successfully!
-        </div>
-      )}
+      {/* saveSuccess message removed, parent will show global save status */}
       
       <div className="availability-sections">
         {/* Regular Schedule Section */}
@@ -440,15 +405,7 @@ const AvailabilityManager = ({ caregiverId, initialAvailability = null, onSave }
         </div>
       </div>
       
-      <div className="availability-actions">
-        <button 
-          className="save-button"
-          onClick={handleSaveAvailability}
-          disabled={isLoading}
-        >
-          {isLoading ? 'Saving...' : 'Save Availability Settings'}
-        </button>
-      </div>
+      {/* Removed main save button, saving is handled by parent form */}
       
       <style jsx>{`
         .availability-manager {

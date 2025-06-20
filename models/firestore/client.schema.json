@@ -1,38 +1,53 @@
 {
+  "title": "Client",
+  "description": "Schema for client information.",
   "type": "object",
   "properties": {
     "name": {
       "type": "string",
-      "description": "Full name of the client."
+      "description": "Full legal name of the client. This field is mandatory."
     },
     "address": {
       "type": "string",
-      "description": "Full address of the client."
+      "description": "Complete street address of the client, including city, state, and ZIP code."
     },
     "phone": {
       "type": "string",
-      "description": "Primary phone number of the client."
+      "description": "Primary contact phone number for the client. Should include area code."
     },
     "email": {
       "type": "string",
       "format": "email",
-      "description": "Primary email address of the client."
+      "description": "Primary email address of the client. Must be a valid email format."
+    },
+    "dateOfBirth": {
+      "type": "string",
+      "format": "date",
+      "description": "Client's date of birth in YYYY-MM-DD format."
     },
     "careNeeds": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "description": "List of care needs for the client (e.g., medication reminder, meal prep)."
+      "description": "List of specific care needs or services required by the client (e.g., 'medication reminder', 'meal preparation', 'mobility assistance')."
     },
     "isActive": {
-        "type": "boolean",
-        "description": "Whether the client's profile is currently active.",
-        "default": true
+      "type": "boolean",
+      "description": "Indicates if the client's profile is currently active and they are receiving services. Defaults to true.",
+      "default": true
     },
     "additionalNotes": {
-        "type": "string",
-        "description": "Any additional notes about the client."
+      "type": "string",
+      "description": "Any other relevant information or specific preferences for the client."
+    },
+    "emergencyContactName": {
+      "type": "string",
+      "description": "Name of the client's primary emergency contact."
+    },
+    "emergencyContactPhone": {
+      "type": "string",
+      "description": "Phone number of the client's primary emergency contact."
     }
   },
   "required": ["name"]

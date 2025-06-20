@@ -1,44 +1,55 @@
 {
+  "title": "Caregiver",
+  "description": "Schema for caregiver information.",
   "type": "object",
   "properties": {
     "name": {
       "type": "string",
-      "description": "Full name of the caregiver."
+      "description": "Full legal name of the caregiver. This field is mandatory."
     },
     "email": {
       "type": "string",
       "format": "email",
-      "description": "Primary email address of the caregiver."
+      "description": "Primary email address of the caregiver. Must be a valid email format. This field is mandatory."
     },
     "phone": {
       "type": "string",
-      "description": "Primary phone number of the caregiver."
+      "description": "Primary contact phone number for the caregiver. Should include area code."
     },
     "address": {
       "type": "string",
-      "description": "Full address of the caregiver."
+      "description": "Complete street address of the caregiver, including city, state, and ZIP code."
     },
     "dateOfBirth": {
       "type": "string",
       "format": "date",
-      "description": "Date of birth in YYYY-MM-DD format."
+      "description": "Caregiver's date of birth in YYYY-MM-DD format."
     },
     "skills": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "description": "List of skills the caregiver possesses (e.g., dementia care, CPR certified)."
+      "description": "List of skills, certifications, or qualifications the caregiver possesses (e.g., 'CPR Certified', 'Dementia Care Specialist', 'Fluent in Spanish')."
     },
     "yearsOfExperience": {
       "type": "number",
       "minimum": 0,
-      "description": "Years of professional caregiving experience."
+      "description": "Total years of professional caregiving experience."
     },
     "isActive": {
-        "type": "boolean",
-        "description": "Whether the caregiver is currently available for assignments.",
-        "default": true
+      "type": "boolean",
+      "description": "Indicates if the caregiver is currently active and available for assignments. Defaults to true.",
+      "default": true
+    },
+    "availabilityType": {
+        "type": "string",
+        "enum": ["live-in", "hourly", "respite"],
+        "description": "Primary type of availability (e.g., live-in, hourly, respite care)."
+    },
+    "notes": {
+        "type": "string",
+        "description": "Any additional notes about the caregiver, such as preferences or restrictions."
     }
   },
   "required": ["name", "email"]

@@ -560,6 +560,195 @@ class EnhancedScheduler {
       return null; // Return null on error
     }
   }
+
+  /**
+   * Get pending conflicts.
+   * For this version, it fetches upcoming schedules and checks each for conflicts.
+   * This is not highly performant for large datasets but demonstrates the concept.
+   * A more robust solution might involve a dedicated 'conflicts' collection updated by triggers.
+   * @param {object} filterOptions - E.g., { daysAhead: 7, limit: 50 }
+   * @returns {Promise<Array>} A list of unique conflict objects.
+   */
+  async getPendingConflicts(filterOptions = { daysAhead: 7, limitPerDay: 10 }) {
+    console.log('Getting pending conflicts with options:', filterOptions);
+    const allFoundConflicts = [];
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    try {
+      for (let i = 0; i < filterOptions.daysAhead; i++) {
+        const currentDate = new Date(today);
+        currentDate.setDate(today.getDate() + i);
+        const dateStr = currentDate.toISOString().split('T')[0];
+
+        const schedulesOnDate = await firebaseService.executeQuery(
+          () => firebaseService.db.collection('schedules')
+            .where('date', '==', dateStr)
+            .orderBy('startTime') // Basic ordering
+            .limit(filterOptions.limitPerDay),
+          `schedules_on_${dateStr}_pendingConflicts`
+        );
+
+        for (const schedule of schedulesOnDate) {
+          // Skip if schedule already indicates resolution or override (hypothetical fields)
+          if (schedule.conflictStatus === 'resolved' || schedule.conflictStatus === 'overridden') {
+            continue;
+          }
+          const conflictsForSchedule = await this.checkScheduleConflicts(schedule.id);
+          if (conflictsForSchedule.length > 0) {
+            // Add context to each conflict
+            conflictsForSchedule.forEach(conflict => {
+              allFoundConflicts.push({
+                id: `${schedule.id}_vs_${conflict.conflictingScheduleId}`, // Create a unique ID for the conflict pair
+                primaryScheduleId: schedule.id,
+                primaryScheduleClientName: schedule.client_name,
+                primaryScheduleTime: `${schedule.startTime}-${schedule.endTime}`,
+                conflictingScheduleId: conflict.conflictingScheduleId,
+                conflictingScheduleClientName: conflict.conflictingSchedule?.client_name,
+                conflictingScheduleTime: `${conflict.conflictingSchedule?.startTime}-${conflict.conflictingSchedule?.endTime}`,
+                date: schedule.date,
+                type: conflict.type,
+                description: conflict.description,
+                status: 'pending', // Assuming these are pending
+                detectedAt: new Date().toISOString(), // Or from a stored conflict record
+              });
+            });
+          }
+        }
+      }
+      // Deduplicate conflicts (since A vs B is same as B vs A, though current check is one-way)
+      // This simple deduplication is based on the generated conflict ID.
+      const uniqueConflicts = Array.from(new Map(allFoundConflicts.map(c => [c.id, c])).values());
+      return uniqueConflicts;
+    } catch (error) {
+      console.error('Error getting pending conflicts:', error);
+      throw new Error(`Failed to get pending conflicts: ${error.message}`);
+    }
+  }
+
+  /**
+   * Resolve a conflict.
+   * For now, this is a placeholder. A real implementation would involve specific actions
+   * like updating one of the schedules, reassigning a caregiver, or marking it as resolved.
+   * We'll assume conflictId is the ID of the primary schedule in the conflict pair.
+   * @param {string} conflictId - The ID of the conflict (e.g., scheduleId_vs_otherScheduleId).
+   * @param {Object} resolutionData - Data about the resolution (e.g., notes, chosen action).
+   * @returns {Promise<Object>} Success status.
+   */
+  async resolveConflict(conflictId, resolutionData) {
+    console.log(`Resolving conflict ${conflictId} with data:`, resolutionData);
+    // Example: conflictId might be "scheduleA_vs_scheduleB"
+    // resolutionData could be { action: "modified_schedule_A", notes: "Adjusted times for schedule A" }
+
+    // This is highly dependent on how conflicts are stored and managed.
+    // If conflicts are not stored as separate documents, this might involve:
+    // 1. Identifying the schedules involved from conflictId.
+    // 2. Applying changes to one or both schedules based on resolutionData.action.
+    // 3. Adding resolutionNotes to the schedules.
+    // 4. Updating a 'conflictStatus' field on the schedules.
+
+    // For this placeholder, let's assume we update the 'primary' schedule involved in the conflict
+    // (if we can parse it from conflictId) with resolution notes and a 'resolved' status.
+    const [primaryScheduleId] = conflictId.split('_vs_');
+    if (!primaryScheduleId) {
+      throw new Error('Invalid conflictId format. Cannot determine primary schedule.');
+    }
+
+    try {
+      await firebaseService.updateDocument('schedules', primaryScheduleId, {
+        conflictResolutionNotes: resolutionData.notes || 'Conflict resolved.',
+        conflictStatus: 'resolved', // Hypothetical field
+        updatedAt: new Date().toISOString(),
+      });
+      // Optionally, create a log entry in a 'resolutionLog' collection.
+      await firebaseService.addDocument('resolutionLog', {
+          conflictId,
+          resolvedAt: new Date().toISOString(),
+          resolution: resolutionData,
+          resolvedBy: resolutionData.resolvedBy || 'system', // Could be admin/user ID
+      });
+      return { success: true, message: `Conflict ${conflictId} marked as resolved.` };
+    } catch (error) {
+      console.error(`Error resolving conflict ${conflictId}:`, error);
+      throw new Error(`Failed to resolve conflict: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get resolution options for a given conflict.
+   * @param {Object} conflictData - The details of the conflict.
+   * @returns {Promise<Array>} A list of suggested resolution options.
+   */
+  async getConflictResolutionOptions(conflictData) {
+    console.log('Getting resolution options for conflict:', conflictData);
+    // These would be more dynamic in a real system
+    const options = [
+      { id: 'reschedule_primary', label: `Reschedule: ${conflictData.primaryScheduleClientName || conflictData.primaryScheduleId}`, details: 'Adjust time/date of the primary schedule.' },
+      { id: 'reschedule_conflicting', label: `Reschedule: ${conflictData.conflictingScheduleClientName || conflictData.conflictingScheduleId}`, details: 'Adjust time/date of the conflicting schedule.' },
+      { id: 'reassign_primary', label: `Reassign Caregiver for: ${conflictData.primaryScheduleClientName || conflictData.primaryScheduleId}`, details: 'Find a different caregiver.' },
+      { id: 'reassign_conflicting', label: `Reassign Caregiver for: ${conflictData.conflictingScheduleClientName || conflictData.conflictingScheduleId}`, details: 'Find a different caregiver.' },
+      { id: 'contact_clients', label: 'Contact Clients/Caregivers', details: 'Manually coordinate with involved parties.'},
+      { id: 'override', label: 'Override & Keep Both', details: 'Acknowledge conflict and keep both schedules (use with caution). Requires reason.'}
+    ];
+    if (conflictData.type === 'travel_time_insufficient') {
+        options.unshift({id: 'adjust_travel_buffer', label: 'Adjust Travel Buffer', details: 'Modify system travel buffer settings if applicable.'});
+    }
+    return options;
+  }
+
+   /**
+   * Mark a conflict as overridden with a reason.
+   * @param {string} conflictId - The ID of the conflict (e.g., scheduleId_vs_otherScheduleId).
+   * @param {string} overrideReason - Reason for overriding the conflict.
+   * @param {string} overriddenBy - User ID or name of who overrode it.
+   * @returns {Promise<Object>} Success status.
+   */
+  async overrideConflict(conflictId, overrideReason, overriddenBy) {
+    console.log(`Overriding conflict ${conflictId} by ${overriddenBy} due to: ${overrideReason}`);
+    const [primaryScheduleId] = conflictId.split('_vs_');
+     if (!primaryScheduleId) {
+      throw new Error('Invalid conflictId format for override.');
+    }
+    try {
+      await firebaseService.updateDocument('schedules', primaryScheduleId, {
+        conflictStatus: 'overridden', // Hypothetical field
+        conflictOverrideReason: overrideReason,
+        conflictOverriddenBy: overriddenBy,
+        updatedAt: new Date().toISOString(),
+      });
+      // Also update the other schedule if applicable, or log this override
+       await firebaseService.addDocument('resolutionLog', {
+          conflictId,
+          resolvedAt: new Date().toISOString(),
+          resolution: { action: 'override', notes: overrideReason },
+          resolvedBy: overriddenBy,
+      });
+      return { success: true, message: `Conflict ${conflictId} marked as overridden.` };
+    } catch (error) {
+      console.error(`Error overriding conflict ${conflictId}:`, error);
+      throw new Error(`Failed to override conflict: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get history of conflict resolutions and overrides.
+   * @returns {Promise<Array>} List of resolution log entries.
+   */
+  async getConflictResolutionHistory(limit = 50) {
+    console.log('Getting conflict resolution history');
+    try {
+      return await firebaseService.executeQuery(
+        () => firebaseService.db.collection('resolutionLog')
+            .orderBy('resolvedAt', 'desc')
+            .limit(limit),
+        `resolutionLog_last_${limit}`
+      );
+    } catch (error) {
+      console.error('Error fetching conflict resolution history:', error);
+      throw new Error(`Failed to fetch resolution history: ${error.message}`);
+    }
+  }
+
 }
 
 module.exports = new EnhancedScheduler();

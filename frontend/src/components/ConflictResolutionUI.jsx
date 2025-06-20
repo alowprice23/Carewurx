@@ -29,15 +29,8 @@ const ConflictResolutionUI = ({ onResolutionComplete }) => {
     setError(null);
     
     try {
-      let conflictsData;
-      
-      if (filterStatus === 'pending') {
-        conflictsData = await universalScheduleService.getPendingConflicts();
-      } else if (filterStatus === 'resolved') {
-        conflictsData = await universalScheduleService.getResolvedConflicts();
-      } else {
-        conflictsData = await universalScheduleService.getAllConflicts();
-      }
+      // Use the new consolidated getConflicts method
+      const conflictsData = await universalScheduleService.getConflicts({ status: filterStatus === 'all' ? undefined : filterStatus });
       
       // Sort conflicts
       const sortedConflicts = sortConflicts(conflictsData, sortBy, sortDirection);
@@ -99,7 +92,8 @@ const ConflictResolutionUI = ({ onResolutionComplete }) => {
       setLoading(prev => ({ ...prev, options: true }));
       
       try {
-        const options = await universalScheduleService.getConflictResolutionOptions(selectedConflict.id);
+        // Pass the whole selectedConflict object as it might be needed for context by the service/backend
+        const options = await universalScheduleService.getConflictResolutionOptions(selectedConflict);
         setResolutionOptions(options);
       } catch (err) {
         console.error('Error fetching resolution options:', err);
@@ -127,13 +121,17 @@ const ConflictResolutionUI = ({ onResolutionComplete }) => {
     setError(null);
     
     try {
-      const resolutionData = {
+      // Assuming current user ID can be fetched or is available via props/context
+      const currentUserId = 'temp-user-id'; // Placeholder: Replace with actual user ID source
+
+      const resolutionPayload = {
         conflictId: selectedConflict.id,
-        resolutionOptionId: optionId,
-        note: resolutionNote
+        resolutionOptionId: optionId, // The backend might map this to a specific action
+        notes: resolutionNote,
+        resolvedBy: currentUserId
       };
       
-      await universalScheduleService.resolveConflict(resolutionData);
+      await universalScheduleService.resolveConflict(resolutionPayload);
       
       // Notify the system about the resolution
       await notificationService.createNotification({
@@ -172,12 +170,16 @@ const ConflictResolutionUI = ({ onResolutionComplete }) => {
     setError(null);
     
     try {
-      const overrideData = {
+      // Assuming current user ID can be fetched or is available via props/context
+      const currentUserId = 'temp-user-id'; // Placeholder: Replace with actual user ID source
+
+      const overridePayload = {
         conflictId: selectedConflict.id,
-        overrideReason: resolutionNote || 'Manual override'
+        overrideReason: resolutionNote || 'Manual override by user.',
+        userId: currentUserId // Pass userId as expected by backend
       };
       
-      await universalScheduleService.overrideConflict(overrideData);
+      await universalScheduleService.overrideConflict(overridePayload);
       
       // Notify the system about the override
       await notificationService.createNotification({

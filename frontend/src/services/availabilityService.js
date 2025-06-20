@@ -5,7 +5,7 @@
  * connecting the frontend availability management interface with
  * the backend (via Electron IPC) or using mock data in browser-only mode.
  */
-
+import firebase from './firebase'; // For getting ID token
 import { isElectronAvailable } from './firebaseService'; // For checking Electron environment
 // We will need to mock getAllCaregivers and getSchedulesByCaregiverId for the browser mode.
 // For simplicity, mock data will be handled directly within the methods.
@@ -37,9 +37,13 @@ class AvailabilityService {
    */
   async getCaregiverAvailability(caregiverId) {
     console.log(`AvailabilityService: getCaregiverAvailability for ${caregiverId}`);
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) { // Called as a function
       try {
-        const response = await window.electronAPI.getCaregiverAvailability(caregiverId);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to get caregiver availability.');
+        const idToken = await user.getIdToken();
+
+        const response = await window.electronAPI.getCaregiverAvailability({ idToken, caregiverId });
         // Assuming response is the raw availability data or null
         if (!response) {
           return { regularSchedule: [], timeOff: [] };
@@ -80,14 +84,18 @@ class AvailabilityService {
    */
   async updateCaregiverAvailability(caregiverId, availabilityData) {
     console.log(`AvailabilityService: updateCaregiverAvailability for ${caregiverId}`);
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) { // Called as a function
       try {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to update caregiver availability.');
+        const idToken = await user.getIdToken();
+
         // Format data if needed (original service did this)
         const formattedData = {
           regularSchedule: availabilityData.regularSchedule,
           timeOff: availabilityData.timeOff // Dates should be in a format backend expects (e.g., ISO string)
         };
-        const response = await window.electronAPI.updateCaregiverAvailability(caregiverId, formattedData);
+        const response = await window.electronAPI.updateCaregiverAvailability({ idToken, caregiverId, availabilityData: formattedData });
         // The backend handler returns { success: true } or throws an error.
         // To maintain consistency or provide more info, one might adjust this.
         if (response && response.success) {
@@ -117,12 +125,16 @@ class AvailabilityService {
   async getAvailableCaregivers(date, startTime, endTime, options = {}) {
     console.log(`AvailabilityService: getAvailableCaregivers for ${date} ${startTime}-${endTime}`);
     let caregivers = [];
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) { // Called as a function
       try {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to get available caregivers.');
+        const idToken = await user.getIdToken();
+
         // Per plan, using getAllCaregivers and then filtering.
         // This is suboptimal; a dedicated backend endpoint would be better.
         // The IPC 'scheduler:findAvailableCaregivers' takes scheduleId, not a time slot.
-        caregivers = await window.electronAPI.getAllCaregivers() || [];
+        caregivers = await window.electronAPI.getAllCaregivers({ idToken }) || [];
          console.log(`AvailabilityService: Electron - Received ${caregivers.length} total caregivers. Filtering locally.`);
       } catch (error) {
         console.error('Error getting all caregivers via Electron API for availability check:', error);
@@ -166,12 +178,16 @@ class AvailabilityService {
    * This abstracts the IPC call or mock data retrieval.
    */
   async _getSchedulesByCaregiverAndDate(caregiverId, date) {
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) { // Called as a function
         try {
+            const user = firebase.auth().currentUser;
+            if (!user) throw new Error('Authentication required to get schedules by caregiver.');
+            const idToken = await user.getIdToken();
+
             // Use existing IPC handler: getSchedulesByCaregiverId(caregiverId, startDate, endDate)
             // Pass the same date for startDate and endDate to simulate fetching for a single day.
             const isoDate = this._formatFirebaseDate(date); // Ensure date is YYYY-MM-DD string
-            return await window.electronAPI.getSchedulesByCaregiverId(caregiverId, isoDate, isoDate) || [];
+            return await window.electronAPI.getSchedulesByCaregiverId({idToken, caregiverId, startDate: isoDate, endDate: isoDate }) || [];
         } catch (error) {
             console.error(`Error getting schedules for ${caregiverId} on ${date} via Electron API:`, error);
             throw error;
@@ -222,8 +238,12 @@ class AvailabilityService {
       return hasScheduleConflict;
     } catch (error) {
       console.error('Error checking schedule conflict:', error);
-      // Default to conflict if there's an error to be safe
-      return true; // Or rethrow: throw new Error(`Failed to check schedule conflict: ${error.message}`);
+      // If the error is an auth error from a dependency, re-throw it.
+      if (error && error.message && error.message.includes('Authentication required')) {
+        throw error;
+      }
+      // Default to conflict if there's an error for other reasons, to be safe
+      return true;
     }
   }
 

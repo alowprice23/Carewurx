@@ -2,7 +2,7 @@
  * LLM Service
  * Handles communication with the Groq API for language model generation using the official SDK
  */
-
+import 'groq-sdk/shims/node'; // Add this line to provide fetch for Groq SDK
 const { Groq } = require('groq-sdk');
 const fs = require('fs');
 const path = require('path');

@@ -51,9 +51,7 @@ async function processExcelFile(filePath) {
   } catch (error) {
     console.error(`Error processing Excel file "${filePath}":`, error);
     // Check for specific xlsx errors if possible, or rethrow generic
-    if (error.message.includes('File not found')) {
-        throw error;
-    }
+    // The initial check for fs.existsSync should catch "File not found" before this point.
     throw new Error(`Failed to process Excel file "${filePath}". Details: ${error.message}`);
   }
 }
@@ -80,9 +78,7 @@ async function processPdfFile(filePath) {
     };
   } catch (error) {
     console.error(`Error processing PDF file "${filePath}":`, error);
-    if (error.message.includes('File not found')) {
-        throw error;
-    }
+    // The initial check for fs.existsSync should catch "File not found" before this point.
     throw new Error(`Failed to process PDF file "${filePath}". Details: ${error.message}`);
   }
 }
@@ -107,9 +103,7 @@ async function processWordFile(filePath) {
     };
   } catch (error) {
     console.error(`Error processing Word file "${filePath}":`, error);
-    if (error.message.includes('File not found')) {
-        throw error;
-    }
+    // The initial check for fs.existsSync should catch "File not found" before this point.
     // Add specific check for mammoth errors if identifiable, e.g. unsupported format
     throw new Error(`Failed to process Word file "${filePath}". It might be an unsupported format (e.g. .doc instead of .docx) or corrupted. Details: ${error.message}`);
   }

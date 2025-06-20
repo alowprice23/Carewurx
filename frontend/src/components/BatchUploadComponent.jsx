@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { notificationService } from '../services';
+import firebase from '../../services/firebase'; // For auth
 
 /**
  * BatchUploadComponent
@@ -52,67 +53,158 @@ const BatchUploadComponent = ({ entityType = 'client' }) => {
   };
   
   const handleUpload = async () => {
-    if (!file) return;
-    
-    setIsUploading(true);
-    setProgress(0);
-    
-    try {
-      // In a real implementation, this would call the actual service
-      // For now, we'll simulate the upload process with a timeout
-      
-      // Start progress simulation
-      const progressInterval = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 95) {
-            clearInterval(progressInterval);
-            return 95;
-          }
-          return prev + 5;
-        });
-      }, 300);
-      
-      // Simulate backend processing
-      setTimeout(() => {
-        clearInterval(progressInterval);
-        setProgress(100);
-        
-        // Simulate results based on entity type
-        const mockResults = {
-          totalRecords: Math.floor(Math.random() * 20) + 5,
-          added: Math.floor(Math.random() * 10) + 2,
-          updated: Math.floor(Math.random() * 5),
-          failed: Math.floor(Math.random() * 3),
-          errors: []
-        };
-        
-        // Generate some sample preview data
-        const mockPreview = generateMockPreviewData(entityType, mockResults.totalRecords);
-        setPreviewData(mockPreview);
-        
-        // Set results
-        setResults(mockResults);
-        
-        // Show notification
-        notificationService.showNotification(
-          `Successfully processed ${mockResults.totalRecords} ${entityType} records`,
-          'success'
-        );
-        
-        setIsUploading(false);
-      }, 3000);
-    } catch (error) {
-      console.error('Upload failed:', error);
-      setResults({ error: error.message });
+    if (!file || !file.path) {
       notificationService.showNotification(
-        `Upload failed: ${error.message}`,
+        'Error: File path is missing. Please select a valid file.',
         'error'
       );
+      console.error('File path is missing from file object:', file);
+      return;
+    }
+    if (fileType === 'unknown') {
+      notificationService.showNotification(
+        'Error: Unknown or unsupported file type. Cannot upload.',
+        'error'
+      );
+      return;
+    }
+
+    setIsUploading(true);
+    setProgress(0);
+      setResults(null);
+      setPreviewData(null);
+
+    try {
+        // Authentication Check
+        if (typeof window !== 'undefined' && window.electronAPI) { // Check if in Electron context
+            const user = firebase.auth().currentUser;
+            if (!user) {
+              notificationService.showNotification('Authentication required to upload file.', 'error');
+              setIsUploading(false);
+              return;
+            }
+            const idToken = await user.getIdToken();
+
+            setProgress(10);
+
+            // Simulate some progress
+            setProgress(50);
+
+            const response = await window.electronAPI.uploadBatchFile({
+              filePath: file.path,
+              entityType,
+              fileType,
+              idToken, // Send the token
+            });
+
+            setProgress(100);
+
+            if (response.success) {
+        // No changes to browser-only/mock logic for this component, as it's Electron-focused for uploads
+        // However, if there was a browser path for uploads, it would go in an else block here.
+        // For this component, if not in Electron, window.electronAPI would be undefined,
+        // and the function would likely error out or not be callable.
+        // The component implicitly assumes Electron for its core functionality.
+        // A top-level check for window.electronAPI could disable the component if not available.
+        // For now, the auth check is nested within the Electron-assumed path.
+
+        // If we want to handle non-electron case explicitly here:
+        /*
+        } else {
+            notificationService.showNotification('File upload is only available in the desktop application.', 'warning');
+            setIsUploading(false);
+            return;
+        }
+        */
+      } else { // This else corresponds to `if (!file || !file.path)` and other pre-checks
+          // This means we are in a browser or pre-checks failed.
+          // If strictly browser, and we want a mock path:
+          // console.log("Simulating upload in browser for file:", file.name);
+          // setProgress(100);
+          // setResults({ added: 1, updated: 0, failed: 0, errors: [], totalRecords: 1});
+          // notificationService.showNotification("Mock upload complete (browser).", "info");
+          // setIsUploading(false);
+          // return;
+          // For now, if not in Electron, it's handled by window.electronAPI not existing.
+          // The auth check above is only for Electron.
+      }
+      // The existing try-catch will handle errors if window.electronAPI is not defined (non-Electron)
+      // or if the auth/IPC call fails.
+      // The main addition is the auth check and token passing for Electron.
+
+      // The original structure was:
+      // setIsUploading(true); ... try { ... await window.electronAPI.uploadBatchFile ... } catch ...
+      // This structure is maintained, with the auth check added inside the try if Electron.
+      // The refactor below integrates the auth check more cleanly.
+
+    // Corrected structure for handleUpload:
+    // (Existing pre-checks for file and fileType remain as they were)
+    // ...
+
+    setIsUploading(true);
+    setProgress(0);
+    setResults(null);
+    setPreviewData(null);
+
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI) { // Electron context
+        const user = firebase.auth().currentUser;
+        if (!user) {
+          notificationService.showNotification('Authentication required to upload file.', 'error');
+          setIsUploading(false);
+          setProgress(0); // Reset progress
+          return;
+        }
+        const idToken = await user.getIdToken();
+
+        setProgress(10);
+      setProgress(50);
+
+      const response = await window.electronAPI.uploadBatchFile({
+        filePath: file.path,
+        entityType,
+        fileType,
+          idToken, // Send the token
+      });
+      setProgress(100);
+      if (response.success) {
+        setResults({
+          totalRecords: response.addedCount + response.updatedCount + response.failedCount,
+          added: response.addedCount,
+          updated: response.updatedCount,
+          failed: response.failedCount,
+          errors: response.errors,
+        });
+        notificationService.showNotification(
+          response.message || `Batch processing complete for ${entityType}s. Added: ${response.addedCount}, Updated: ${response.updatedCount}, Failed: ${response.failedCount}.`,
+          'success'
+        );
+        // Preview data is not returned from backend, so this feature is effectively disabled.
+        // The UI will simply not render the preview table if previewData is null.
+      } else {
+        throw new Error(response.error || 'Batch upload failed with no specific error message.');
+      }
+    } catch (error) {
+      console.error('Upload failed:', error);
+      const errorMessage = error.message || 'An unknown error occurred during upload.';
+      setResults({ error: errorMessage, errors: error.details ? [error.details] : [] });
+      notificationService.showNotification(
+        `Upload failed: ${errorMessage}`,
+        'error'
+      );
+      setProgress(100); // Finish progress even on error to stop loading indicator
+    } finally {
       setIsUploading(false);
+      // Optionally reset file input
+      if (fileInputRef.current) {
+        // fileInputRef.current.value = null; // This might not always work due to security
+      }
+      // setFile(null); // Decide if file should be cleared after attempt
     }
   };
   
-  // Generate mock preview data based on entity type
+  // Generate mock preview data based on entity type (REMOVING - backend doesn't provide this)
+  /*
   const generateMockPreviewData = (type, count) => {
     const data = [];
     
@@ -167,6 +259,7 @@ const BatchUploadComponent = ({ entityType = 'client' }) => {
     
     return data;
   };
+  */
   
   return (
     <div className="batch-upload-container">

@@ -138,6 +138,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createNotification: (notificationData) => secureIPCInvoke('notifications:create', notificationData),
   deleteNotification: (notificationId) => secureIPCInvoke('notifications:delete', notificationId),
   markAllNotificationsAsRead: () => secureIPCInvoke('notifications:markAllAsRead'),
+  getAvailableRecipients: () => secureIPCInvoke('notifications:getAvailableRecipients'),
   
   // Agent-specific operations
   getAgentInsights: (scheduleId) => secureIPCInvoke('agent:getInsights', scheduleId),
@@ -147,56 +148,78 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Schedule conflict detection and resolution
   checkScheduleConflicts: (scheduleId) => secureIPCInvoke('scheduler:checkConflicts', scheduleId),
-  resolveScheduleConflict: (conflictId, resolution) => secureIPCInvoke('scheduler:resolveConflict', conflictId, resolution),
+  resolveScheduleConflict: (conflictId, resolutionData) => secureIPCInvoke('scheduler:resolveConflict', conflictId, resolutionData),
+  getConflicts: (filterOptions) => secureIPCInvoke('scheduler:getConflicts', filterOptions),
+  getConflictResolutionOptions: (conflictData) => secureIPCInvoke('scheduler:getConflictResolutionOptions', conflictData),
+  overrideConflict: (overrideData) => secureIPCInvoke('scheduler:overrideConflict', overrideData), // overrideData = { conflictId, reason, userId }
+  getConflictResolutionHistory: (limit) => secureIPCInvoke('scheduler:getConflictResolutionHistory', limit),
   
   // Enhanced schedule management
   getSchedule: (scheduleId) => secureIPCInvoke('firebase:getSchedule', scheduleId),
   getScheduleWithDetails: (scheduleId) => secureIPCInvoke('scheduler:getScheduleWithDetails', scheduleId),
-  optimizeSchedules: (date) => secureIPCInvoke('scheduler:optimizeSchedules', date),
+  // Note: optimizeSchedules was removed from main.js in previous diff, if it's needed, it should be added back there and here.
+  // optimizeSchedules: (date) => secureIPCInvoke('scheduler:optimizeSchedules', date), // Assuming it might be re-added or was missed.
   
   // Database operations for the circular integration model
   updateCircularEntity: (entityType, entityId, data) => secureIPCInvoke('firebase:updateCircularEntity', entityType, entityId, data),
   getCircularEntities: (entityType, filter) => secureIPCInvoke('firebase:getCircularEntities', entityType, filter),
   
-  // Authentication methods with secure parameter validation
-  getCurrentUser: async () => {
-    return await secureIPCInvoke('auth:getCurrentUser');
-  },
-  signIn: async (email, password) => {
-    // Don't log emails or passwords
-    if (!email || typeof email !== 'string' || !password || typeof password !== 'string') {
-      throw new Error('Invalid email or password format');
+  // --- Authentication methods ---
+  // getCurrentUser is removed, frontend will rely on its own Firebase SDK state.
+
+  /**
+   * Notifies the backend that a user has successfully signed in on the client-side.
+   * The backend will verify the token.
+   * @param {object} params - Parameters object.
+   * @param {string} params.idToken - The Firebase ID token of the signed-in user.
+   * @returns {Promise<object>} Backend confirmation, e.g., { success: true, uid: '...' }.
+   */
+  userSignedIn: async (params) => { // Expects an object like { idToken: '...' }
+    if (!params || !params.idToken || typeof params.idToken !== 'string') {
+      console.error('[Preload:userSignedIn] Invalid parameters: idToken is required.');
+      throw new Error('userSignedIn requires an idToken.');
     }
-    
     try {
-      const result = await secureIPCInvoke('auth:signIn', email, password);
-      
-      // Safely notify about authentication state change
+      // The args for secureIPCInvoke will be [{idToken: '...'}]
+      const result = await secureIPCInvoke('auth:userSignedIn', params);
       window.dispatchEvent(new CustomEvent('auth-state-change', { 
-        detail: { authenticated: true }
+        detail: { authenticated: true, user: result } // Pass user info if available
       }));
-      
       return result;
     } catch (error) {
-      throw new Error('Authentication failed');
-    }
-  },
-  signOut: async () => {
-    try {
-      const result = await secureIPCInvoke('auth:signOut');
-      
-      // Safely notify about authentication state change
-      window.dispatchEvent(new CustomEvent('auth-state-change', { 
-        detail: { authenticated: false }
+      // Ensure auth-state-change reflects failure if initial sign-in verification fails
+      window.dispatchEvent(new CustomEvent('auth-state-change', {
+        detail: { authenticated: false, error: error.message }
       }));
-      
-      return result;
-    } catch (error) {
-      throw new Error('Sign out failed');
+      console.error('[Preload:userSignedIn] Error:', error.message);
+      throw error; // Rethrow the original error structure from main.js
     }
   },
 
+  /**
+   * Notifies the backend that a user has signed out on the client-side.
+   * @param {object} [params] - Optional parameters object.
+   * @param {string} [params.idToken] - Optionally pass the token for logging/revocation (if supported).
+   * @returns {Promise<object>} Backend confirmation, e.g., { success: true }.
+   */
+  userSignedOut: async (params) => { // params is optional, e.g., { idToken: '...' }
+    try {
+      // If params are provided, they are passed. If not, no args beyond channel.
+      const result = await secureIPCInvoke('auth:userSignedOut', ...(params ? [params] : []));
+      window.dispatchEvent(new CustomEvent('auth-state-change', { 
+        detail: { authenticated: false }
+      }));
+      return result;
+    } catch (error) {
+      console.error('[Preload:userSignedOut] Error:', error.message);
+      throw error; // Rethrow the original error structure from main.js
+    }
+  },
+  // --- End Authentication methods ---
+
   // Batch Upload
+  // Note: This (and other protected handlers) will now need idToken passed in params
+  // Example: electronAPI.uploadBatchFile({ idToken: '...', filePath: '...', ... })
   uploadBatchFile: (params) => secureIPCInvoke('upload-batch-file', params),
   getBatchUploadProgress: (batchId) => secureIPCInvoke('get-batch-upload-progress', batchId),
   cancelBatchUpload: (batchId) => secureIPCInvoke('cancel-batch-upload', batchId),

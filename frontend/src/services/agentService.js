@@ -2,9 +2,9 @@
  * Agent Service
  * Provides interface to agent-related functionality with browser fallback
  */
-
-// Import the firebaseService to check if we're in Electron mode
-import { firebaseService } from './index';
+import firebase from './firebase'; // For auth - Corrected path
+// agentService uses its own isElectronAvailable flag, but good to be consistent if needed
+// import { isElectronAvailable as isFirebaseServiceElectronAvailable } from './firebaseService';
 
 // Mock data for browser-only mode
 const MOCK_CONVERSATIONS = {
@@ -137,13 +137,17 @@ class AgentService {
    * @returns {Promise<Object>} - Conversation details including ID
    */
   async startConversation(userId, agentName, initialMessage) {
+    // userId is passed but not used in current electronAPI.startAgentConversation mock or service logic.
+    // If it were to be used, it should ideally come from the authenticated user's UID.
     try {
       if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        // Make sure to pass userId if the API expects it
-        return await window.electronAPI.startAgentConversation(agentName, initialMessage);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to start conversation.');
+        const idToken = await user.getIdToken();
+        // Assuming backend might want userId from token, or it's just for auth.
+        // Original call: window.electronAPI.startAgentConversation(agentName, initialMessage)
+        // New call:
+        return await window.electronAPI.startAgentConversation({ idToken, agentName, initialMessage, userId: user.uid });
       } else {
         // Browser-only mode: create a mock conversation
         console.log('Agent Service: Creating mock conversation in browser-only mode');
@@ -183,7 +187,10 @@ class AgentService {
   async getResponse(conversationId, message) {
     try {
       if (this.isElectronAvailable) {
-        return await window.electronAPI.getAgentResponse(conversationId, message);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to get agent response.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.getAgentResponse({ idToken, conversationId, message });
       } else {
         // Browser-only mode: generate a mock response
         console.log('Agent Service: Generating mock response in browser-only mode');
@@ -284,7 +291,10 @@ class AgentService {
   async applyOpportunity(opportunityId, options = {}) {
     try {
       if (this.isElectronAvailable) {
-        return await window.electronAPI.applyOpportunity(opportunityId, options);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to apply for opportunity.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.applyOpportunity({ idToken, opportunityId, options });
       } else {
         // Browser-only mode: update mock opportunity status
         console.log('Agent Service: Updating mock opportunity status in browser-only mode');
@@ -318,7 +328,10 @@ class AgentService {
   async rejectOpportunity(opportunityId, reason = '') {
     try {
       if (this.isElectronAvailable) {
-        return await window.electronAPI.rejectOpportunity(opportunityId, reason);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to reject opportunity.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.rejectOpportunity({ idToken, opportunityId, reason });
       } else {
         // Browser-only mode: update mock opportunity status
         console.log('Agent Service: Updating mock opportunity status in browser-only mode');

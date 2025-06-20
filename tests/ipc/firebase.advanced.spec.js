@@ -1,3 +1,5 @@
+process.env.GROQ_API_KEY = 'mock-api-key-for-tests'; // Ensure LLMService in main.js doesn't fail on init
+
 const { firebaseService } = require('../../services/firebase');
 // To mock realTimeUpdatesService, we need its path. Assuming it's './app/services/real-time-updates' relative to main.js
 // For testing, it's often easier if services are structured to be easily mockable.

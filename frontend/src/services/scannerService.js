@@ -33,11 +33,12 @@ const MOCK_SCAN_HISTORY = [
   }
 ];
 
+import firebase from './firebase'; // For auth - Corrected Path
+
 class ScannerService {
   constructor() {
-    // this.isElectronAvailable = typeof window !== 'undefined' && window.electronAPI;
     // Use the imported isElectronAvailable for consistency
-    this.isElectronAvailable = isElectronAvailable;
+    // this.isElectronAvailable = isElectronAvailable; // This was incorrect, isElectronAvailable is a function
     this.mockScanHistory = [...MOCK_SCAN_HISTORY];
     this.mockStatus = {
       isRunning: false,
@@ -56,11 +57,11 @@ class ScannerService {
    */
   async getStatus() {
     try {
-      if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.getScheduleScannerStatus();
+      if (isElectronAvailable()) {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to get scanner status.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.getScheduleScannerStatus({ idToken });
       } else {
         // Browser-only mode: return mock status
         console.log('Scanner Service: Using mock status in browser-only mode');
@@ -80,11 +81,11 @@ class ScannerService {
    */
   async start(intervalMinutes = 30) {
     try {
-      if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.startScheduleScanner(intervalMinutes);
+      if (isElectronAvailable()) {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to start scanner.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.startScheduleScanner({ idToken, intervalMinutes });
       } else {
         // Browser-only mode: simulate scanner start
         console.log(`Scanner Service: Starting mock scanner with ${intervalMinutes} minute interval in browser-only mode`);
@@ -142,11 +143,11 @@ class ScannerService {
    */
   async stop() {
     try {
-      if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.stopScheduleScanner();
+      if (isElectronAvailable()) {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to stop scanner.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.stopScheduleScanner({ idToken });
       } else {
         // Browser-only mode: simulate scanner stop
         console.log('Scanner Service: Stopping mock scanner in browser-only mode');
@@ -180,11 +181,11 @@ class ScannerService {
    */
   async forceScan(options = {}) {
     try {
-      if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.forceScanSchedules(options);
+      if (isElectronAvailable()) {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to force scan.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.forceScanSchedules({ idToken, options });
       } else {
         // Browser-only mode: simulate forced scan
         console.log('Scanner Service: Forcing mock scan in browser-only mode');
@@ -229,11 +230,11 @@ class ScannerService {
    */
   async getHistory(limit = 10) {
     try {
-      if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.getScanHistory(limit);
+      if (isElectronAvailable()) {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to get scan history.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.getScanHistory({ idToken, limit });
       } else {
         // Browser-only mode: return mock history
         console.log('Scanner Service: Using mock history in browser-only mode');
@@ -253,57 +254,39 @@ class ScannerService {
    * @returns {Function} - Cleanup function to stop the scanner
    */
   setupBackgroundScanner(intervalMinutes = 30) {
-    if (this.isElectronAvailable) {
-      // Electron mode: Use the actual electron API
-      if (!window.electronAPI) {
-        console.error('Electron API not available - cannot set up background scanner');
-        return () => {}; // Return empty cleanup function
-      }
-      
-      // Start the scanner
-      this.start(intervalMinutes)
-        .then(result => {
-          console.log('Background scanner started:', result);
-        })
-        .catch(error => {
-          console.error('Failed to start background scanner:', error);
-        });
+    // This method calls this.start() and this.stop(), which now have auth checks.
+    // If called in Electron mode, and user is not authenticated, this.start() will throw.
+    // The try/catch here is for the setupBackgroundScanner's own logic, not the async start/stop.
+    try {
+      if (isElectronAvailable()) {
+        console.log(`Scanner Service: Setting up Electron background scanner with ${intervalMinutes} min interval.`);
+        this.start(intervalMinutes) // This will perform auth check
+          .then(result => console.log('Background scanner started via Electron API:', result))
+          .catch(error => console.error('Failed to start background scanner via Electron API:', error));
+
+        return () => {
+          this.stop() // This will perform auth check
+            .then(() => console.log('Background scanner stopped via Electron API'))
+            .catch(error => console.error('Failed to stop background scanner via Electron API:', error));
+        };
+      } else {
+        console.log(`Scanner Service: Setting up mock background scanner with ${intervalMinutes} minute interval`);
+        this.start(intervalMinutes) // Browser mode, no auth check in service for this path
+          .then(result => console.log('Mock background scanner started:', result))
+          .catch(error => console.error('Failed to start mock background scanner:', error));
         
-      // Return cleanup function
-      return () => {
-        this.stop()
-          .then(() => {
-            console.log('Background scanner stopped');
-          })
-          .catch(error => {
-            console.error('Failed to stop background scanner:', error);
-          });
-      };
-    } else {
-      // Browser-only mode: Set up mock background scanner
-      console.log(`Scanner Service: Setting up mock background scanner with ${intervalMinutes} minute interval`);
-      
-      this.start(intervalMinutes)
-        .then(result => {
-          console.log('Mock background scanner started:', result);
-        })
-        .catch(error => {
-          console.error('Failed to start mock background scanner:', error);
-        });
-      
-      // Return cleanup function
-      return () => {
-        this.stop()
-          .then(() => {
-            console.log('Mock background scanner stopped');
-          })
-          .catch(error => {
-            console.error('Failed to stop mock background scanner:', error);
-          });
-      };
+        return () => {
+          this.stop() // Browser mode
+            .then(() => console.log('Mock background scanner stopped'))
+            .catch(error => console.error('Failed to stop mock background scanner:', error));
+        };
+      }
+    } catch (error) {
+        // This catch is for synchronous errors during setup, not for the async start/stop.
+        console.error("Error in setupBackgroundScanner synchronous part:", error);
+        return () => {}; // Return no-op cleanup
     }
   }
-  
   /**
    * Subscribe to scan results
    * @param {Function} callback - Callback function for scan results

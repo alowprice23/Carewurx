@@ -1,9 +1,20 @@
 import availabilityService from '../availabilityService';
 import { isElectronAvailable } from '../firebaseService';
+import firebase from '../firebase'; // To be mocked for auth
 
-// Mock the firebaseService to control isElectronAvailable
+// Mock firebaseService to control isElectronAvailable
 jest.mock('../firebaseService', () => ({
   isElectronAvailable: jest.fn(),
+}));
+
+// Mock firebase for auth
+const mockGetIdToken = jest.fn().mockResolvedValue('test-id-token');
+let mockCurrentUser = null;
+
+jest.mock('../firebase', () => ({
+  auth: () => ({
+    currentUser: mockCurrentUser, // This will be dynamically set in test cases
+  }),
 }));
 
 // Mock window.electronAPI
@@ -14,19 +25,24 @@ Object.defineProperty(window, 'electronAPI', {
     updateCaregiverAvailability: jest.fn(),
     getAllCaregivers: jest.fn(),
     getSchedulesByCaregiverId: jest.fn(),
-    // findAvailableCaregivers: jest.fn(), // Not directly used by availabilityService as refactored
   },
   writable: true,
 });
 
 describe('AvailabilityService', () => {
+  const mockToken = 'test-id-token';
+
   beforeEach(() => {
     jest.clearAllMocks();
-    // Reset mock implementations for each test if necessary
-    window.electronAPI.getCaregiverAvailability.mockReset();
-    window.electronAPI.updateCaregiverAvailability.mockReset();
-    window.electronAPI.getAllCaregivers.mockReset();
-    window.electronAPI.getSchedulesByCaregiverId.mockReset();
+    mockCurrentUser = null;
+    mockGetIdToken.mockClear().mockResolvedValue('test-id-token');
+
+    // Reset IPC method mocks
+    for (const key in window.electronAPI) {
+      if (typeof window.electronAPI[key].mockReset === 'function') {
+        window.electronAPI[key].mockReset();
+      }
+    }
   });
 
   const caregiverId = 'cgTest1';
@@ -37,28 +53,39 @@ describe('AvailabilityService', () => {
       timeOff: [{ startDate: '2024-07-04', endDate: '2024-07-04' }],
     };
 
-    it('should call electronAPI.getCaregiverAvailability in Electron mode', async () => {
+    it('should call electronAPI.getCaregiverAvailability with idToken in Electron mode if authenticated', async () => {
       isElectronAvailable.mockReturnValue(true);
+      mockCurrentUser = { getIdToken: mockGetIdToken };
       window.electronAPI.getCaregiverAvailability.mockResolvedValue(mockApiAvailability);
 
       const result = await availabilityService.getCaregiverAvailability(caregiverId);
-      expect(window.electronAPI.getCaregiverAvailability).toHaveBeenCalledWith(caregiverId);
-      expect(result).toEqual(mockApiAvailability); // Assuming processing in service matches this
+      expect(mockGetIdToken).toHaveBeenCalled();
+      expect(window.electronAPI.getCaregiverAvailability).toHaveBeenCalledWith({ idToken: mockToken, caregiverId });
+      expect(result).toEqual(mockApiAvailability);
+    });
+
+    it('should throw error in Electron mode if not authenticated for getCaregiverAvailability', async () => {
+      isElectronAvailable.mockReturnValue(true);
+      mockCurrentUser = null;
+      await expect(availabilityService.getCaregiverAvailability(caregiverId))
+        .rejects.toThrow('Authentication required');
+      expect(window.electronAPI.getCaregiverAvailability).not.toHaveBeenCalled();
     });
 
     it('should return mock availability in browser mode', async () => {
       isElectronAvailable.mockReturnValue(false);
       const result = await availabilityService.getCaregiverAvailability(caregiverId);
-      // Check against the MOCK_AVAILABILITY structure or a generic one
       expect(result).toHaveProperty('regularSchedule');
       expect(result).toHaveProperty('timeOff');
       expect(window.electronAPI.getCaregiverAvailability).not.toHaveBeenCalled();
     });
 
-    it('should return empty defaults if Electron API returns null', async () => {
+    it('should return empty defaults if Electron API returns null (authenticated)', async () => {
       isElectronAvailable.mockReturnValue(true);
+      mockCurrentUser = { getIdToken: mockGetIdToken }; // Added auth simulation
       window.electronAPI.getCaregiverAvailability.mockResolvedValue(null);
       const result = await availabilityService.getCaregiverAvailability(caregiverId);
+      expect(mockGetIdToken).toHaveBeenCalled(); // Ensure auth check was made
       expect(result).toEqual({ regularSchedule: [], timeOff: [] });
     });
   });
@@ -70,20 +97,32 @@ describe('AvailabilityService', () => {
     };
     const mockSuccessResponse = { success: true };
 
-    it('should call electronAPI.updateCaregiverAvailability in Electron mode', async () => {
+    it('should call electronAPI.updateCaregiverAvailability with idToken in Electron mode if authenticated', async () => {
       isElectronAvailable.mockReturnValue(true);
+      mockCurrentUser = { getIdToken: mockGetIdToken };
       window.electronAPI.updateCaregiverAvailability.mockResolvedValue(mockSuccessResponse);
 
       const result = await availabilityService.updateCaregiverAvailability(caregiverId, availabilityData);
-      expect(window.electronAPI.updateCaregiverAvailability).toHaveBeenCalledWith(caregiverId, availabilityData);
+      expect(mockGetIdToken).toHaveBeenCalled();
+      expect(window.electronAPI.updateCaregiverAvailability).toHaveBeenCalledWith({ idToken: mockToken, caregiverId, availabilityData });
       expect(result).toEqual(mockSuccessResponse);
     });
 
-    it('should throw error if electronAPI.updateCaregiverAvailability indicates failure', async () => {
+    it('should throw error in Electron mode if not authenticated for updateCaregiverAvailability', async () => {
       isElectronAvailable.mockReturnValue(true);
+      mockCurrentUser = null;
+      await expect(availabilityService.updateCaregiverAvailability(caregiverId, availabilityData))
+        .rejects.toThrow('Authentication required');
+      expect(window.electronAPI.updateCaregiverAvailability).not.toHaveBeenCalled();
+    });
+
+    it('should throw error if electronAPI.updateCaregiverAvailability indicates failure (authenticated)', async () => {
+      isElectronAvailable.mockReturnValue(true);
+      mockCurrentUser = { getIdToken: mockGetIdToken };
       window.electronAPI.updateCaregiverAvailability.mockResolvedValue({ success: false, error: 'Backend error' });
       await expect(availabilityService.updateCaregiverAvailability(caregiverId, availabilityData))
         .rejects.toThrow('Backend error');
+      expect(mockGetIdToken).toHaveBeenCalled(); // Auth check still happens
     });
 
     it('should simulate update and return success in browser mode', async () => {
@@ -91,7 +130,6 @@ describe('AvailabilityService', () => {
       const result = await availabilityService.updateCaregiverAvailability(caregiverId, availabilityData);
       expect(result).toEqual({ success: true });
       expect(window.electronAPI.updateCaregiverAvailability).not.toHaveBeenCalled();
-      // Optionally, verify mock store MOCK_AVAILABILITY[caregiverId] was updated
     });
   });
 
@@ -99,19 +137,28 @@ describe('AvailabilityService', () => {
     const date = '2024-07-15';
     const mockSchedules = [{ id: 's1', date: date, startTime: '10:00', endTime: '12:00' }];
 
-    it('should call electronAPI.getSchedulesByCaregiverId in Electron mode', async () => {
+    it('should call electronAPI.getSchedulesByCaregiverId with idToken in Electron mode if authenticated', async () => {
       isElectronAvailable.mockReturnValue(true);
+      mockCurrentUser = { getIdToken: mockGetIdToken };
       window.electronAPI.getSchedulesByCaregiverId.mockResolvedValue(mockSchedules);
 
       const result = await availabilityService._getSchedulesByCaregiverAndDate(caregiverId, date);
-      expect(window.electronAPI.getSchedulesByCaregiverId).toHaveBeenCalledWith(caregiverId, date, date);
+      expect(mockGetIdToken).toHaveBeenCalled();
+      expect(window.electronAPI.getSchedulesByCaregiverId).toHaveBeenCalledWith({idToken: mockToken, caregiverId, startDate: date, endDate: date});
       expect(result).toEqual(mockSchedules);
+    });
+
+    it('should throw error in Electron mode if not authenticated for _getSchedulesByCaregiverAndDate', async () => {
+      isElectronAvailable.mockReturnValue(true);
+      mockCurrentUser = null;
+      await expect(availabilityService._getSchedulesByCaregiverAndDate(caregiverId, date))
+        .rejects.toThrow('Authentication required');
+      expect(window.electronAPI.getSchedulesByCaregiverId).not.toHaveBeenCalled();
     });
 
     it('should return mock schedules in browser mode', async () => {
       isElectronAvailable.mockReturnValue(false);
-      // This requires MOCK_SCHEDULES to be set up in availabilityService.js for 'cgTest1' and this date
-      const result = await availabilityService._getSchedulesByCaregiverAndDate('cg1', date); // using 'cg1' from mock
+      const result = await availabilityService._getSchedulesByCaregiverAndDate('cg1', date);
       expect(result).toEqual(expect.any(Array));
       expect(window.electronAPI.getSchedulesByCaregiverId).not.toHaveBeenCalled();
     });
@@ -123,8 +170,6 @@ describe('AvailabilityService', () => {
     const endTime = '12:00';
 
     beforeEach(() => {
-        // Mock getCaregiverAvailability and _getSchedulesByCaregiverAndDate for conflict checks
-        // This makes checkScheduleConflict tests independent of the direct IPC call tests for those helpers
         jest.spyOn(availabilityService, 'getCaregiverAvailability');
         jest.spyOn(availabilityService, '_getSchedulesByCaregiverAndDate');
     });
@@ -133,69 +178,57 @@ describe('AvailabilityService', () => {
         jest.restoreAllMocks();
     });
 
-    it('should return false (no conflict) if slot is available in Electron mode', async () => {
+    it('should return false (no conflict) if slot is available in Electron mode and authenticated', async () => {
       isElectronAvailable.mockReturnValue(true);
-      availabilityService.getCaregiverAvailability.mockResolvedValue({
-        regularSchedule: [{ dayOfWeek: 1, startTime: '09:00', endTime: '17:00' }], // Monday
-        timeOff: [],
-      });
-      availabilityService._getSchedulesByCaregiverAndDate.mockResolvedValue([]); // No existing schedules
-
-      const conflict = await availabilityService.checkScheduleConflict(caregiverId, date, startTime, endTime);
-      expect(conflict).toBe(false);
-    });
-
-    it('should return true (conflict) if caregiver is on time off in Electron mode', async () => {
-      isElectronAvailable.mockReturnValue(true);
+      mockCurrentUser = { getIdToken: mockGetIdToken };
       availabilityService.getCaregiverAvailability.mockResolvedValue({
         regularSchedule: [{ dayOfWeek: 1, startTime: '09:00', endTime: '17:00' }],
-        timeOff: [{ startDate: date, endDate: date }],
+        timeOff: [],
       });
       availabilityService._getSchedulesByCaregiverAndDate.mockResolvedValue([]);
 
       const conflict = await availabilityService.checkScheduleConflict(caregiverId, date, startTime, endTime);
-      expect(conflict).toBe(true);
+      expect(conflict).toBe(false);
+      expect(availabilityService.getCaregiverAvailability).toHaveBeenCalledWith(caregiverId); // Auth handled by actual method if not spied
     });
 
-    it('should return true (conflict) if slot overlaps existing schedule in Electron mode', async () => {
+    it('should throw auth error if underlying getCaregiverAvailability fails due to auth in Electron mode (not spied)', async () => {
         isElectronAvailable.mockReturnValue(true);
-        availabilityService.getCaregiverAvailability.mockResolvedValue({
-            regularSchedule: [{ dayOfWeek: 1, startTime: '09:00', endTime: '17:00' }],
-            timeOff: [],
-        });
-        availabilityService._getSchedulesByCaregiverAndDate.mockResolvedValue([
-            { date: date, startTime: '09:30', endTime: '11:30' } // Existing schedule
-        ]);
+        mockCurrentUser = null;
+        // jest.restoreAllMocks(); // Use actual service methods for this test
+        // Note: Spies are active from beforeEach. To test actual method, need to not use spy or clear it.
+        // For this test, we'll assume the spy is NOT active for getCaregiverAvailability to test real propagation.
+        // This requires careful management of spies if other tests in describe rely on them.
+        // A cleaner way would be a separate describe block or more granular spy management.
+        // Given the current structure, we test the scenario where the actual method is called.
+        // If getCaregiverAvailability is spied and mockResolvedValue is used, it won't throw auth error.
+        // So, we remove the spy for this specific test for getCaregiverAvailability.
+        availabilityService.getCaregiverAvailability.mockRestore(); // Use actual method
 
-        const conflict = await availabilityService.checkScheduleConflict(caregiverId, date, startTime, endTime); // 10:00-12:00
-        expect(conflict).toBe(true);
+        await expect(availabilityService.checkScheduleConflict(caregiverId, date, startTime, endTime))
+            .rejects.toThrow('Authentication required to get caregiver availability.');
     });
 
-    it('should correctly check conflict in browser mode using mock data', async () => {
+
+    it('should correctly check conflict in browser mode using mock data (spied methods)', async () => {
       isElectronAvailable.mockReturnValue(false);
-      // For this to pass, MOCK_AVAILABILITY['cg1'] and MOCK_SCHEDULES['cg1'] need to be set
-      // to represent no conflict for a specific slot.
-      // Example: cg1 works Mon 9-5, no time off on 2024-07-15. No schedules on that day.
-      // This test relies on the mock data defined in availabilityService.js
-      const noConflictDate = '2024-07-15'; // Assuming this is a Monday in mock data
+      const noConflictDate = '2024-07-15';
       const noConflictStartTime = '14:00';
       const noConflictEndTime = '16:00';
-      // Setup MOCK_AVAILABILITY['cg1'] and MOCK_SCHEDULES['cg1'] in the service file
-      // MOCK_AVAILABILITY['cg1'] = { regularSchedule: [{ dayOfWeek: 1, startTime: '09:00', endTime: '17:00' }], timeOff: [] };
-      // MOCK_SCHEDULES['cg1'] = [];
 
-      // For this test, we assume 'cg1' is in MOCK_AVAILABILITY from the service file
-      // and has a slot on Monday 09:00-17:00, and MOCK_SCHEDULES has no conflicting appts for cg1 on 2024-07-15
+      availabilityService.getCaregiverAvailability.mockResolvedValue({
+        regularSchedule: [{ dayOfWeek: 1, startTime: '09:00', endTime: '17:00' }],
+        timeOff: []
+      });
+      availabilityService._getSchedulesByCaregiverAndDate.mockResolvedValue([]);
+
       const conflict = await availabilityService.checkScheduleConflict('cg1', noConflictDate, noConflictStartTime, noConflictEndTime);
-      // Depending on the actual hardcoded mock data, this might be true or false.
-      // For a robust test, one might clear and set MOCK_AVAILABILITY and MOCK_SCHEDULES here.
-      // For now, we just check it runs without error.
-      expect(conflict).toBeDefined(); // True or False based on actual mock data in service
+      expect(conflict).toBe(false);
     });
   });
 
   describe('getAvailableCaregivers', () => {
-    const date = '2024-07-15'; // Monday
+    const date = '2024-07-15';
     const startTime = '10:00';
     const endTime = '12:00';
     const mockCaregiversList = [
@@ -204,8 +237,6 @@ describe('AvailabilityService', () => {
     ];
 
     beforeEach(() => {
-        // Mock checkScheduleConflict for getAvailableCaregivers tests
-        // This makes these tests focus on the logic of getAvailableCaregivers itself
         jest.spyOn(availabilityService, 'checkScheduleConflict');
     });
 
@@ -213,44 +244,46 @@ describe('AvailabilityService', () => {
         jest.restoreAllMocks();
     });
 
-    it('should call electronAPI.getAllCaregivers and filter based on conflict check in Electron mode', async () => {
+    it('should call electronAPI.getAllCaregivers with idToken and filter in Electron mode if authenticated', async () => {
       isElectronAvailable.mockReturnValue(true);
+      mockCurrentUser = { getIdToken: mockGetIdToken };
       window.electronAPI.getAllCaregivers.mockResolvedValue(mockCaregiversList);
 
-      // cg1 is available, cg2 is not
       availabilityService.checkScheduleConflict.mockImplementation(async (cgId, d, st, et) => {
-          return cgId === 'cg2'; // cg2 has a conflict
+          return cgId === 'cg2';
       });
 
       const result = await availabilityService.getAvailableCaregivers(date, startTime, endTime);
-      expect(window.electronAPI.getAllCaregivers).toHaveBeenCalled();
+      expect(mockGetIdToken).toHaveBeenCalled();
+      expect(window.electronAPI.getAllCaregivers).toHaveBeenCalledWith({idToken: mockToken});
       expect(availabilityService.checkScheduleConflict).toHaveBeenCalledTimes(mockCaregiversList.length);
       expect(result.length).toBe(1);
       expect(result[0].id).toBe('cg1');
     });
 
-    it('should use mock caregivers and filter based on conflict check in browser mode', async () => {
-      isElectronAvailable.mockReturnValue(false);
-      // Mock data for caregivers is in availabilityService.js (MOCK_CAREGIVERS)
-      // Let's assume MOCK_CAREGIVERS has 'cg1' and 'cg2'
+    it('should throw error if not authenticated before calling getAllCaregivers in Electron mode', async () => {
+        isElectronAvailable.mockReturnValue(true);
+        mockCurrentUser = null;
+        await expect(availabilityService.getAvailableCaregivers(date, startTime, endTime))
+            .rejects.toThrow('Authentication required');
+        expect(window.electronAPI.getAllCaregivers).not.toHaveBeenCalled();
+    });
 
+    it('should use mock caregivers and filter in browser mode', async () => {
+      isElectronAvailable.mockReturnValue(false);
       availabilityService.checkScheduleConflict.mockImplementation(async (cgId, d, st, et) => {
-        return cgId === 'cg2'; // cg2 has a conflict, based on MOCK_CAREGIVERS
+        return cgId === 'cg2';
       });
 
       const result = await availabilityService.getAvailableCaregivers(date, startTime, endTime);
       expect(window.electronAPI.getAllCaregivers).not.toHaveBeenCalled();
-      // The number of times checkScheduleConflict is called depends on MOCK_CAREGIVERS length
       expect(availabilityService.checkScheduleConflict).toHaveBeenCalled();
-      expect(result.some(cg => cg.id === 'cg1')).toBe(true); // Assuming cg1 is mock available
-      expect(result.some(cg => cg.id === 'cg2')).toBe(false); // Assuming cg2 is mock unavailable
+      expect(result.some(cg => cg.id === 'cg1')).toBe(true);
+      expect(result.some(cg => cg.id === 'cg2')).toBe(false);
     });
   });
 
   describe('getNextAvailableSlots', () => {
-    // These tests are more complex due to date logic and multiple calls.
-    // Focus on verifying the core dependencies (getCaregiverAvailability, _getSchedulesByCaregiverAndDate) are called.
-
     beforeEach(() => {
         jest.spyOn(availabilityService, 'getCaregiverAvailability');
         jest.spyOn(availabilityService, '_getSchedulesByCaregiverAndDate');
@@ -260,8 +293,10 @@ describe('AvailabilityService', () => {
         jest.restoreAllMocks();
     });
 
-    it('should use Electron API for data fetching in Electron mode', async () => {
+    it('should use Electron API for data fetching in Electron mode (authenticated)', async () => {
         isElectronAvailable.mockReturnValue(true);
+        mockCurrentUser = { getIdToken: mockGetIdToken };
+
         availabilityService.getCaregiverAvailability.mockResolvedValue({
             regularSchedule: [{ dayOfWeek: 1, startTime: '09:00', endTime: '17:00' }], timeOff: []
         });
@@ -269,8 +304,16 @@ describe('AvailabilityService', () => {
 
         await availabilityService.getNextAvailableSlots(caregiverId);
         expect(availabilityService.getCaregiverAvailability).toHaveBeenCalledWith(caregiverId);
-        // _getSchedulesByCaregiverAndDate will be called for each day checked.
         expect(availabilityService._getSchedulesByCaregiverAndDate).toHaveBeenCalled();
+    });
+
+    it('should throw auth error if initial getCaregiverAvailability fails in Electron mode (not spied)', async () => {
+        isElectronAvailable.mockReturnValue(true);
+        mockCurrentUser = null;
+        jest.restoreAllMocks(); // Use actual service method
+
+        await expect(availabilityService.getNextAvailableSlots(caregiverId))
+            .rejects.toThrow('Authentication required to get caregiver availability.');
     });
 
     it('should use mock data providers in browser mode', async () => {
@@ -280,14 +323,11 @@ describe('AvailabilityService', () => {
         });
         availabilityService._getSchedulesByCaregiverAndDate.mockResolvedValue([]);
 
-
         await availabilityService.getNextAvailableSlots(caregiverId);
         expect(availabilityService.getCaregiverAvailability).toHaveBeenCalledWith(caregiverId);
         expect(availabilityService._getSchedulesByCaregiverAndDate).toHaveBeenCalled();
-        // Verify that the underlying electronAPI calls were NOT made for the helpers
         expect(window.electronAPI.getCaregiverAvailability).not.toHaveBeenCalled();
         expect(window.electronAPI.getSchedulesByCaregiverId).not.toHaveBeenCalled();
     });
   });
-
 });

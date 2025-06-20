@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { notificationService, universalDataService } from '../services';
+import React, { useState, useEffect, useCallback } from 'react'; // Added useCallback
+import { notificationService, universalDataService, universalScheduleService } from '../services'; // Added universalScheduleService
 import BatchUploadComponent from './BatchUploadComponent';
 import EntityFormModal from './EntityFormModal';
 
@@ -15,6 +15,10 @@ const UniversalDataEditor = () => {
   const [selectedEntityId, setSelectedEntityId] = useState(null);
   const [selectedEntity, setSelectedEntity] = useState(null);
   const [showBatchUpload, setShowBatchUpload] = useState(false);
+
+  // State for select options in schedule form
+  const [clientOptions, setClientOptions] = useState([]);
+  const [caregiverOptions, setCaregiverOptions] = useState([]);
   
   // Modal state
   const [showFormModal, setShowFormModal] = useState(false);
@@ -43,7 +47,13 @@ const UniversalDataEditor = () => {
         } else if (entityType === 'caregiver') {
           fetchedEntities = await universalDataService.getCaregivers();
         } else if (entityType === 'schedule') {
-          fetchedEntities = await universalDataService.getSchedules();
+          fetchedEntities = await universalScheduleService.getSchedules({}); // Use universalScheduleService
+          // Fetch clients and caregivers for dropdowns if not already fetched or if they might change
+          // For simplicity, always fetch here. In a real app, consider caching or context.
+          const clients = await universalDataService.getClients();
+          const caregivers = await universalDataService.getCaregivers();
+          setClientOptions(clients.map(c => ({ id: c.id, name: `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.id })));
+          setCaregiverOptions(caregivers.map(cg => ({ id: cg.id, name: `${cg.firstName || ''} ${cg.lastName || ''}`.trim() || cg.id })));
         }
         
         setEntities(fetchedEntities);
@@ -85,8 +95,12 @@ const UniversalDataEditor = () => {
         } else if (entityType === 'caregiver') {
           fetchedEntity = await universalDataService.getCaregiver(selectedEntityId);
         } else if (entityType === 'schedule') {
-          // Get the schedule from entities list or fetch individually if needed
-          fetchedEntity = entities.find(entity => entity.id === selectedEntityId) || {};
+          // Use getScheduleWithDetails for schedules
+          if (selectedEntityId) { // Ensure selectedEntityId is not null
+            fetchedEntity = await universalScheduleService.getScheduleWithDetails(selectedEntityId);
+          } else {
+            fetchedEntity = null; // Or some default empty object
+          }
         }
         
         setSelectedEntity(fetchedEntity);
@@ -289,9 +303,9 @@ const UniversalDataEditor = () => {
         }
       } else if (entityType === 'schedule') {
         if (modalMode === 'edit' && selectedEntityId) {
-          result = await universalDataService.updateSchedule(selectedEntityId, formData);
+          result = await universalScheduleService.updateSchedule(selectedEntityId, formData); // Use universalScheduleService
         } else {
-          result = await universalDataService.createSchedule(formData);
+          result = await universalScheduleService.createSchedule(formData); // Use universalScheduleService
         }
       }
       
@@ -305,10 +319,10 @@ const UniversalDataEditor = () => {
       
       // Refresh entity list
       const updatedEntities = await (entityType === 'client' 
-        ? universalDataService.getClients() 
-        : entityType === 'caregiver' 
+        ? universalDataService.getClients()
+        : entityType === 'caregiver'
           ? universalDataService.getCaregivers()
-          : universalDataService.getSchedules());
+          : universalScheduleService.getSchedules({})); // Use universalScheduleService
       
       setEntities(updatedEntities);
       
@@ -363,14 +377,14 @@ const UniversalDataEditor = () => {
             name: 'clientId', 
             label: 'Client', 
             type: 'select', 
-            options: entities.map(client => ({ id: client.id, name: `${client.firstName} ${client.lastName}` })), 
+            options: clientOptions, // Use dedicated clientOptions state
             required: true 
           },
           { 
             name: 'caregiverId', 
             label: 'Caregiver', 
             type: 'select', 
-            options: entities.map(caregiver => ({ id: caregiver.id, name: `${caregiver.firstName} ${caregiver.lastName}` })),
+            options: caregiverOptions, // Use dedicated caregiverOptions state
             required: true 
           },
           { name: 'date', label: 'Date', type: 'date', required: true },

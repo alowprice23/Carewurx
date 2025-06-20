@@ -9,26 +9,44 @@ const { app, BrowserWindow, ipcMain, session, protocol } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const dotenv = require('dotenv');
+const admin = require('firebase-admin'); // Added for auth
 const agentManager = require('./agents/core/agent-manager');
 const scheduleScanner = require('./services/schedule-scanner');
 const enhancedScheduler = require('./services/enhanced-scheduler');
 const notificationService = require('./services/notification-service');
-const { firebaseService } = require('./services/firebase');
+const { firebaseService } = require('./services/firebase'); // This is the admin SDK instance
 const realTimeUpdatesService = require('./app/services/real-time-updates'); // Moved from firebase:updateCircularEntity
 
 // Batch Upload Services
-const LLMService = require('./agents/core/llm-service'); // Added
-const LLMDocumentProcessor = require('./services/llmDocumentProcessor'); // Added
-const EntityDataProcessor = require('./services/entityDataProcessor'); // Added
-const fileProcessors = require('./services/fileProcessors'); // Added
+const LLMService = require('./agents/core/llm-service');
+const LLMDocumentProcessor = require('./services/llmDocumentProcessor');
+const EntityDataProcessor = require('./services/entityDataProcessor');
+const fileProcessors = require('./services/fileProcessors');
 
 // Instantiate services for batch upload
 // Ensure GROQ_API_KEY is in your .env file for LLMService
-const llmService = new LLMService();
+const llmService = new LLMService(); // Ensure this handles missing API key gracefully if needed for tests
 const llmDocumentProcessor = new LLMDocumentProcessor(llmService);
-const entityDataProcessor = new EntityDataProcessor(firebaseService); // firebaseService is already admin instance
+const entityDataProcessor = new EntityDataProcessor(firebaseService);
 
 let mainWindow;
+
+// Authentication Utility
+async function ensureAuthenticated(token) {
+  if (!token) {
+    console.warn('[Auth] ensureAuthenticated: No ID token provided.');
+    throw { code: 'unauthenticated', message: 'No ID token provided.' };
+  }
+  try {
+    // Use admin.auth() directly
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    return decodedToken;
+  } catch (error) {
+    console.error('[Auth] ensureAuthenticated: Token verification failed:', error.message);
+    // Augment error with a standard structure but keep original details for logging
+    throw { code: 'permission-denied', message: `Invalid ID token: ${error.message}`, originalError: error };
+  }
+}
 
 /**
  * Create the main browser window
@@ -204,12 +222,24 @@ ipcMain.handle('firebase:getCaregiver', async (event, caregiverId) => {
   return await firebaseService.getCaregiver(caregiverId);
 });
 
-ipcMain.handle('firebase:getAllClients', async (event) => {
-  return await firebaseService.getAllClients();
+ipcMain.handle('firebase:getAllClients', async (event, args) => {
+  try {
+    await ensureAuthenticated(args && args.idToken);
+    return await firebaseService.getAllClients();
+  } catch (error) {
+    console.error('IPC firebase:getAllClients error:', error.message);
+    throw error; // Rethrow to be caught by preload.js invoke wrapper or frontend
+  }
 });
 
-ipcMain.handle('firebase:getAllCaregivers', async (event) => {
-  return await firebaseService.getAllCaregivers();
+ipcMain.handle('firebase:getAllCaregivers', async (event, args) => {
+  try {
+    await ensureAuthenticated(args && args.idToken);
+    return await firebaseService.getAllCaregivers();
+  } catch (error) {
+    console.error('IPC firebase:getAllCaregivers error:', error.message);
+    throw error;
+  }
 });
 
 ipcMain.handle('firebase:getSchedulesByClientId', async (event, clientId, startDate, endDate) => {
@@ -359,6 +389,55 @@ ipcMain.handle('notifications:markAllAsRead', async (event) => {
   return await notificationService.markAllAsRead();
 });
 
+ipcMain.handle('notifications:getAvailableRecipients', async () => {
+  try {
+    if (!firebaseService || !firebaseService.db) {
+      console.error('[IPC notifications:getAvailableRecipients] Firebase service not initialized.');
+      throw new Error('Firebase service not available on backend.');
+    }
+    const db = firebaseService.db;
+    const recipients = [];
+
+    // Fetch users from Firestore 'users' collection
+    // Assuming 'users' collection documents have uid, displayName, email, role
+    const usersSnapshot = await db.collection('users').get();
+    usersSnapshot.forEach(doc => {
+      const userData = doc.data();
+      recipients.push({
+        id: doc.id, // Firestore document ID (should be UID)
+        name: userData.displayName || userData.email || doc.id, // Fallback for name
+        type: userData.role || 'user', // Default to 'user' if role not specified
+      });
+    });
+
+    // Fetch clients
+    const clients = await firebaseService.getAllClients(); // This is an existing method
+    clients.forEach(client => {
+      recipients.push({
+        id: client.id,
+        name: client.name,
+        type: 'client',
+      });
+    });
+
+    // Fetch caregivers
+    const caregivers = await firebaseService.getAllCaregivers(); // This is an existing method
+    caregivers.forEach(caregiver => {
+      recipients.push({
+        id: caregiver.id,
+        name: `${caregiver.firstName || ''} ${caregiver.lastName || ''}`.trim() || caregiver.id, // Combine names or use ID
+        type: 'caregiver',
+      });
+    });
+
+    console.log(`[IPC notifications:getAvailableRecipients] Fetched ${recipients.length} potential recipients.`);
+    return recipients;
+  } catch (error) {
+    console.error('[IPC notifications:getAvailableRecipients] Error fetching recipients:', error);
+    throw error; // Rethrow to be caught by preload.js invoke wrapper or frontend
+  }
+});
+
 // Agent-specific operations
 ipcMain.handle('agent:getInsights', async (event, scheduleId) => {
   return await agentManager.getInsightsForSchedule(scheduleId);
@@ -382,9 +461,48 @@ ipcMain.handle('scheduler:checkConflicts', async (event, scheduleId) => {
   return await enhancedScheduler.checkScheduleConflicts(scheduleId);
 });
 
-ipcMain.handle('scheduler:resolveConflict', async (event, conflictId, resolution) => {
-  return await enhancedScheduler.resolveScheduleConflict(conflictId, resolution);
+ipcMain.handle('scheduler:resolveConflict', async (event, conflictId, resolutionData) => {
+  // Ensure enhancedScheduler.resolveConflict is correctly implemented and called
+  return await enhancedScheduler.resolveConflict(conflictId, resolutionData);
 });
+
+ipcMain.handle('scheduler:getConflicts', async (event, filterOptions) => {
+  try {
+    return await enhancedScheduler.getPendingConflicts(filterOptions);
+  } catch (error) {
+    console.error('IPC Error getting conflicts:', error);
+    throw error; // Or return structured error
+  }
+});
+
+ipcMain.handle('scheduler:getConflictResolutionOptions', async (event, conflictData) => {
+  // Note: conflictData itself is passed, not just conflictId, as options might depend on conflict type/details
+  try {
+    return await enhancedScheduler.getConflictResolutionOptions(conflictData);
+  } catch (error) {
+    console.error('IPC Error getting conflict resolution options:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('scheduler:overrideConflict', async (event, { conflictId, reason, userId }) => {
+  try {
+    return await enhancedScheduler.overrideConflict(conflictId, reason, userId);
+  } catch (error) {
+    console.error('IPC Error overriding conflict:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('scheduler:getConflictResolutionHistory', async (event, limit) => {
+  try {
+    return await enhancedScheduler.getConflictResolutionHistory(limit);
+  } catch (error) {
+    console.error('IPC Error getting conflict resolution history:', error);
+    throw error;
+  }
+});
+
 
 // Enhanced schedule management
 ipcMain.handle('firebase:getSchedule', async (event, scheduleId) => {
@@ -395,8 +513,20 @@ ipcMain.handle('scheduler:getScheduleWithDetails', async (event, scheduleId) => 
   return await enhancedScheduler.getScheduleWithDetails(scheduleId);
 });
 
-ipcMain.handle('scheduler:optimizeSchedules', async (event, date) => {
-  return await enhancedScheduler.optimizeSchedules(date);
+ipcMain.handle('scheduler:createSchedule', async (event, args) => {
+  try {
+    const decodedToken = await ensureAuthenticated(args && args.idToken);
+    // Pass scheduleData, not the whole args, to the service
+    // Also, include UID for auditing if service supports it
+    // For now, just ensuring scheduleData is correctly extracted
+    if (!args || !args.scheduleData) {
+        throw { code: 'invalid-argument', message: 'scheduleData is required.'};
+    }
+    return await enhancedScheduler.createSchedule(args.scheduleData, decodedToken.uid);
+  } catch (error) {
+    console.error('IPC scheduler:createSchedule error:', error.message);
+    throw error;
+  }
 });
 
 // Database operations specifically for the circular integration model (C=2πr)
@@ -414,9 +544,16 @@ ipcMain.handle('firebase:getCircularEntities', async (event, entityType, filter)
 
 
 // Batch Upload IPC Handlers
-ipcMain.handle('upload-batch-file', async (event, { filePath, entityType, fileType }) => {
-  console.log(`[IPC] Received 'upload-batch-file': filePath=${filePath}, entityType=${entityType}, fileType=${fileType}`);
+ipcMain.handle('upload-batch-file', async (event, args) => {
   try {
+    const decodedToken = await ensureAuthenticated(args && args.idToken);
+    const { filePath, entityType, fileType } = args; // Extract actual arguments after auth
+
+    if (!filePath || !entityType || !fileType) {
+      throw { code: 'invalid-argument', message: 'filePath, entityType, and fileType are required.' };
+    }
+    console.log(`[IPC] User ${decodedToken.uid} initiated 'upload-batch-file': filePath=${filePath}, entityType=${entityType}, fileType=${fileType}`);
+
     let fileOutput;
     switch (fileType.toLowerCase()) {
       case 'excel': // Handles .xlsx, .xls, .csv (if xlsx library supports it)
@@ -515,49 +652,55 @@ function validateParams(params) {
   return true;
 }
 
-// Authentication related handlers with enhanced security
-ipcMain.handle('auth:getCurrentUser', async (event) => {
-  // In a real implementation, you would validate the user session
-  // For now, return a mock user with limited information
-  return {
-    uid: 'test-user-123',
-    email: 'admin@carewurx.com',
-    displayName: 'Admin User',
-    role: 'admin'
-  };
-});
+// Authentication related handlers
+// No longer using auth:getCurrentUser
 
-ipcMain.handle('auth:signIn', async (event, email, password) => {
-  console.log('Received sign-in request');
+ipcMain.handle('auth:userSignedIn', async (event, args) => {
+  console.log('[Auth] Received auth:userSignedIn request');
   try {
-    // Validate input parameters
-    if (!validateParams(email) || !validateParams(password)) {
-      throw new Error('Invalid input parameters');
+    if (!args || !args.idToken) {
+      throw { code: 'invalid-argument', message: 'idToken is required for userSignedIn.' };
     }
+    const decodedToken = await ensureAuthenticated(args.idToken); // Verifies token
+    console.log(`[Auth] User ${decodedToken.uid} signed in successfully. Backend verified.`);
+
+    // Optional: Set custom claims if needed in the future.
+    // This is an example and should be driven by actual role management strategy.
+    // const currentClaims = decodedToken.customClaims || {};
+    // if (!currentClaims.role) { // Example: Set a default role if not present
+    //   await admin.auth().setCustomUserClaims(decodedToken.uid, { ...currentClaims, role: 'user' });
+    //   console.log(`[Auth] Custom claim 'role: user' set for ${decodedToken.uid}`);
+    // }
     
-    // In a real app, you would verify credentials against Firebase Auth
-    // and implement proper authentication
-    if (email && password && typeof email === 'string' && typeof password === 'string') {
-      return {
-        user: {
-          uid: 'test-user-123',
-          email: email,
-          displayName: email.split('@')[0], 
-          role: 'user'
-        }
-      };
-    } else {
-      throw new Error('Invalid email or password');
-    }
+    return { success: true, uid: decodedToken.uid, email: decodedToken.email };
   } catch (error) {
-    console.error('Sign-in error:', error);
-    throw new Error('Authentication failed');
+    console.error('[Auth] auth:userSignedIn error:', error.message);
+    // Ensure the error thrown is structured as expected by the frontend
+    throw error; // ensureAuthenticated already throws a structured error
   }
 });
 
-ipcMain.handle('auth:signOut', async (event) => {
-  // Placeholder for sign out functionality
-  console.log('User signed out');
+ipcMain.handle('auth:userSignedOut', async (event, args) => {
+  // args might contain idToken if frontend wants to invalidate it backend-side,
+  // but typically client-side SDK handles sign-out and token expiration.
+  // For now, this is mainly a notification for backend logging.
+  const token = args && args.idToken;
+  let uid = 'unknown_user';
+  if (token) {
+    try {
+      // Peek into the token to get UID for logging, without failing if it's already expired.
+      const decoded = await admin.auth().verifyIdToken(token, true); // true to check revocation status if applicable
+      uid = decoded.uid;
+    } catch (e) {
+      // If token is invalid/expired, that's fine for sign-out, just log it.
+      console.warn(`[Auth] auth:userSignedOut: Provided token was invalid or expired, UID for logging might be inaccurate. Error: ${e.message}`);
+      const claims = admin.auth.JSONParser.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+      uid = claims && claims.user_id ? claims.user_id : 'unknown_user_from_payload';
+    }
+  }
+  console.log(`[Auth] User ${uid} signed out (notification received by backend).`);
+  // No specific backend session to clear for Electron in this context typically.
+  // If using custom session management, clear it here.
   return { success: true };
 });
 
@@ -565,36 +708,79 @@ ipcMain.handle('auth:signOut', async (event) => {
  * Apply security-related handlers and enhancements when the app is ready
  */
 app.whenReady().then(() => {
+  // Initialize Firebase Admin SDK if not already done through firebaseService
+  // This check is important. firebaseService.initialize() should handle this.
+  if (admin.apps.length === 0) {
+     // This case should ideally not happen if firebaseService.initialize() is called at startup
+    console.warn("[Main] Firebase Admin SDK not initialized directly by main.js, relying on service. If errors occur, check initialization order.");
+    // firebaseService.initialize(); // Or: admin.initializeApp(); if using default credentials
+  }
+
   // Register a secure custom protocol if needed
   protocol.registerFileProtocol('secure-file', (request, callback) => {
-    const url = request.url.substr(13);
+    const url = request.url.substr(13); // Length of 'secure-file://'
     try {
-      // Sanitize and validate the path
-      const filePath = path.normalize(url);
-      if (filePath.startsWith('..') || !filePath.startsWith(app.getAppPath())) {
-        throw new Error('Invalid path');
+      // Basic path normalization and validation
+      const requestedPath = path.normalize(decodeURI(url)); // Decode URI components like %20
+      const appDir = app.getAppPath();
+
+      // Security: Ensure the path is within the app's directory
+      // This is a basic check; more robust path validation might be needed depending on use case
+      if (!requestedPath.startsWith(appDir) || requestedPath.includes('..')) {
+         console.error(`[Protocol] Denied access to path outside app directory or containing '..': ${requestedPath}`);
+         return callback({ error: -6 }); // NET::ERR_FILE_NOT_FOUND or generic access denied
       }
-      callback({ path: path.normalize(`${app.getAppPath()}/${url}`) });
+      callback({ path: requestedPath });
     } catch (error) {
-      console.error('Protocol error:', error);
-      callback({ error: -324 }); // NET::ERR_EMPTY_RESPONSE
+      console.error('[Protocol] Error processing secure-file request:', error);
+      callback({ error: -324 }); // NET::ERR_EMPTY_RESPONSE (Generic error)
     }
   });
   
   // Apply additional permission handlers
-  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    const secureOrigins = ['file://', 'http://localhost'];
-    const url = webContents.getURL();
-    
-    // Only allow permissions from secure origins
-    if (secureOrigins.some(origin => url.startsWith(origin))) {
-      // Restrict to only necessary permissions
-      if (['notifications', 'media'].includes(permission)) {
-        return callback(true);
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    const webContentsUrl = webContents.getURL(); // Use the URL of the webContents requesting permission
+
+    // Default to false
+    let allowPermission = false;
+
+    // Define secure origins (file for local, localhost for dev)
+    const secureOrigins = ['file://', `http://localhost:${process.env.PORT || 3000}`];
+
+
+    // Check if the request URL is from a secure origin
+    const isSecureOrigin = secureOrigins.some(origin => webContentsUrl.startsWith(origin));
+
+    if (isSecureOrigin) {
+      // Define allowed permissions
+      const allowedPermissions = [
+        'notifications', // For app notifications
+        'media',         // If app uses camera/microphone (conditionally)
+        // 'clipboard-read', // If app needs to read clipboard (use with caution)
+        // 'clipboard-write', // If app needs to write to clipboard (use with caution)
+        // 'fullscreen' // If app needs to go fullscreen
+      ];
+
+      if (allowedPermissions.includes(permission)) {
+        // Example: Media permissions might depend on specific features being enabled
+        if (permission === 'media') {
+          // Check if the URL specifically needs media access, e.g., a video call page
+          // For now, let's assume it's okay if from secure origin.
+          // In a real app, you might have a more granular check or user prompt.
+          console.log(`[Permissions] Allowing '${permission}' for URL: ${webContentsUrl}`);
+          allowPermission = true;
+        } else {
+          console.log(`[Permissions] Allowing '${permission}' for URL: ${webContentsUrl}`);
+          allowPermission = true;
+        }
+      } else {
+        console.warn(`[Permissions] Denying non-whitelisted permission '${permission}' for secure URL: ${webContentsUrl}`);
       }
+    } else {
+      console.warn(`[Permissions] Denying permission '${permission}' for non-secure URL: ${webContentsUrl}`);
     }
     
-    // Deny all other permissions
-    callback(false);
+    callback(allowPermission);
   });
+  // Removed duplicated/malformed permission handling logic that was below this point
 });

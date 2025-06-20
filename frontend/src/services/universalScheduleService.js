@@ -4,7 +4,7 @@
  * Implements the C=2πr circular integration model and uses Electron IPC
  * with mock fallbacks for browser-only mode.
  */
-
+import firebase from './firebase'; // For auth - Corrected path
 import { isElectronAvailable } from './firebaseService';
 
 // Mock data for browser-only mode
@@ -27,9 +27,12 @@ class UniversalScheduleService {
    * @returns {Promise<Array>} - List of schedules
    */
   async getSchedules(options = {}) {
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) {
       try {
-        return await window.electronAPI.getCircularEntities('schedules', options);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to get schedules.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.getCircularEntities('schedules', { idToken, options });
       } catch (error) {
         console.error('Error getting schedules via Electron API:', error);
         throw error;
@@ -53,9 +56,12 @@ class UniversalScheduleService {
    * @returns {Promise<Object|null>} - Schedule data or null
    */
   async getSchedule(scheduleId) {
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) {
       try {
-        return await window.electronAPI.getSchedule(scheduleId);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to get schedule.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.getSchedule({ idToken, scheduleId });
       } catch (error) {
         console.error(`Error getting schedule ${scheduleId} via Electron API:`, error);
         throw error;
@@ -74,9 +80,12 @@ class UniversalScheduleService {
    * @returns {Promise<Array>} - List of schedules
    */
   async getClientSchedules(clientId, startDate = null, endDate = null) {
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) {
       try {
-        return await window.electronAPI.getSchedulesByClientId(clientId, startDate, endDate);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to get client schedules.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.getSchedulesByClientId({ idToken, clientId, startDate, endDate });
       } catch (error) {
         console.error(`Error getting client schedules for ${clientId} via Electron API:`, error);
         throw error;
@@ -98,9 +107,12 @@ class UniversalScheduleService {
    * @returns {Promise<Array>} - List of schedules
    */
   async getCaregiverSchedules(caregiverId, startDate = null, endDate = null) {
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) {
       try {
-        return await window.electronAPI.getSchedulesByCaregiverId(caregiverId, startDate, endDate);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to get caregiver schedules.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.getSchedulesByCaregiverId({ idToken, caregiverId, startDate, endDate });
       } catch (error) {
         console.error(`Error getting caregiver schedules for ${caregiverId} via Electron API:`, error);
         throw error;
@@ -121,10 +133,12 @@ class UniversalScheduleService {
    * @returns {Promise<Object|null>} - Updated schedule or null if not found (mock)
    */
   async updateSchedule(scheduleId, changes) {
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) {
       try {
-        // Assuming the IPC handler returns the updated schedule object or similar structure
-        return await window.electronAPI.updateSchedule(scheduleId, changes);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to update schedule.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.updateSchedule({ idToken, scheduleId, changes });
       } catch (error) {
         console.error(`Error updating schedule ${scheduleId} via Electron API:`, error);
         throw error;
@@ -145,9 +159,12 @@ class UniversalScheduleService {
    * @returns {Promise<Array>} - List of conflicts
    */
   async findConflicts(scheduleId) {
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) {
       try {
-        return await window.electronAPI.checkScheduleConflicts(scheduleId);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to find conflicts.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.checkScheduleConflicts({ idToken, scheduleId });
       } catch (error) {
         console.error(`Error finding conflicts for schedule ${scheduleId} via Electron API:`, error);
         throw error;
@@ -165,9 +182,12 @@ class UniversalScheduleService {
    * @returns {Promise<Object|null>} - Availability data or null
    */
   async getCaregiverAvailability(caregiverId) {
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) {
       try {
-        return await window.electronAPI.getCaregiverAvailability(caregiverId);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to get caregiver availability.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.getCaregiverAvailability({ idToken, caregiverId });
       } catch (error) {
         console.error(`Error getting caregiver availability for ${caregiverId} via Electron API:`, error);
         throw error;
@@ -185,9 +205,12 @@ class UniversalScheduleService {
    * @returns {Promise<Object>} - Mock success response or IPC response
    */
   async updateCaregiverAvailability(caregiverId, availabilityData) {
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) {
       try {
-        return await window.electronAPI.updateCaregiverAvailability(caregiverId, availabilityData);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to update caregiver availability.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.updateCaregiverAvailability({ idToken, caregiverId, availabilityData });
       } catch (error) {
         console.error(`Error updating caregiver availability for ${caregiverId} via Electron API:`, error);
         throw error;
@@ -205,17 +228,20 @@ class UniversalScheduleService {
    * @returns {Promise<Object>} - Created schedule
    */
   async createSchedule(scheduleData) {
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) {
       try {
-        return await window.electronAPI.createSchedule(scheduleData);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to create schedule.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.createSchedule({ idToken, scheduleData });
       } catch (error) {
         console.error('Error creating schedule via Electron API:', error);
         throw error;
       }
     } else {
       console.log('UniversalScheduleService: Simulating schedule creation');
-      const newId = `schedule${nextMockScheduleId++}`;
-      const newSchedule = { id: newId, ...scheduleData, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      const newId = scheduleData.id || `schedule${nextMockScheduleId++}`; // Prioritize provided ID
+      const newSchedule = { ...scheduleData, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       MOCK_SCHEDULES_DB[newId] = newSchedule;
       return Promise.resolve(newSchedule);
     }
@@ -227,9 +253,12 @@ class UniversalScheduleService {
    * @returns {Promise<Object|boolean>} - Success status or IPC response
    */
   async deleteSchedule(scheduleId) {
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) {
       try {
-        return await window.electronAPI.deleteSchedule(scheduleId);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to delete schedule.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.deleteSchedule({ idToken, scheduleId });
       } catch (error) {
         console.error(`Error deleting schedule ${scheduleId} via Electron API:`, error);
         throw error;
@@ -250,9 +279,12 @@ class UniversalScheduleService {
    * @returns {Promise<Object|null>} - Detailed schedule or null
    */
   async getScheduleWithDetails(scheduleId) {
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) {
       try {
-        return await window.electronAPI.getScheduleWithDetails(scheduleId);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to get schedule details.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.getScheduleWithDetails({ idToken, scheduleId });
       } catch (error) {
         console.error(`Error getting schedule details for ${scheduleId} via Electron API:`, error);
         throw error;
@@ -279,9 +311,12 @@ class UniversalScheduleService {
    * @returns {Promise<Object|null>} - Best caregiver match or null
    */
   async findBestCaregiver(scheduleId) {
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) {
       try {
-        return await window.electronAPI.findBestCaregiver(scheduleId);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to find best caregiver.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.findBestCaregiver({ idToken, scheduleId });
       } catch (error) {
         console.error(`Error finding best caregiver for schedule ${scheduleId} via Electron API:`, error);
         throw error;
@@ -301,9 +336,12 @@ class UniversalScheduleService {
    * @returns {Promise<Object>} - Optimization results
    */
   async optimizeSchedules(date) {
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) {
       try {
-        return await window.electronAPI.optimizeSchedules(date);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to optimize schedules.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.optimizeSchedules({ idToken, date });
       } catch (error) {
         console.error(`Error optimizing schedules for date ${date} via Electron API:`, error);
         throw error;
@@ -311,6 +349,113 @@ class UniversalScheduleService {
     } else {
       console.log(`UniversalScheduleService: Simulating schedule optimization for ${date}`);
       return Promise.resolve({ success: true, message: `Mock optimization complete for ${date}`, changes: 0 });
+    }
+  }
+
+  // --- Conflict Resolution Methods ---
+
+  async getConflicts(filterOptions = { status: 'pending' }) {
+    if (isElectronAvailable()) {
+      try {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to get conflicts.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.scheduler.getConflicts({ idToken, filterOptions });
+      } catch (error) {
+        console.error('Error getting conflicts via Electron API:', error);
+        throw error;
+      }
+    } else {
+      console.log('UniversalScheduleService: Returning mock conflicts', filterOptions);
+      const mockConflictBase = {
+        id: `conflict-${Date.now()}`,
+        detectedAt: new Date().toISOString(),
+        client: { name: 'Mock Client' },
+        caregivers: [{name: 'Mock CG1'}, {name: 'Mock CG2'}],
+        scheduleDate: '2024-10-10',
+        startTime: '10:00', endTime: '12:00',
+        type: 'Double Booking',
+        severity: 7,
+        description: 'Mock conflict description.'
+      };
+      if (filterOptions.status === 'pending') return Promise.resolve([{ ...mockConflictBase, status: 'pending' }]);
+      if (filterOptions.status === 'resolved') return Promise.resolve([{ ...mockConflictBase, status: 'resolved', resolutionNotes: 'Mock resolved' }]);
+      return Promise.resolve([{ ...mockConflictBase, status: 'pending' }, { ...mockConflictBase, id: 'conflict-2', status: 'resolved' }]);
+    }
+  }
+
+  async getConflictResolutionOptions(conflictData) {
+    if (isElectronAvailable()) {
+      try {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to get conflict resolution options.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.scheduler.getConflictResolutionOptions({ idToken, conflictData });
+      } catch (error) {
+        console.error('Error getting conflict resolution options via Electron API:', error);
+        throw error;
+      }
+    } else {
+      console.log('UniversalScheduleService: Returning mock conflict resolution options');
+      return Promise.resolve([
+        { id: 'opt1', description: 'Mock Option 1: Reschedule primary', impactLevel: 'medium' },
+        { id: 'opt2', description: 'Mock Option 2: Reassign caregiver', impactLevel: 'low' },
+      ]);
+    }
+  }
+
+  async resolveConflict(resolutionData) {
+    if (isElectronAvailable()) {
+      try {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to resolve conflict.');
+        const idToken = await user.getIdToken();
+        // Backend expects (conflictId, resolutionData), pass as {conflictId, resolutionData} to match others
+        return await window.electronAPI.scheduler.resolveConflict({idToken, conflictId: resolutionData.conflictId, resolutionData });
+      } catch (error) {
+        console.error('Error resolving conflict via Electron API:', error);
+        throw error;
+      }
+    } else {
+      console.log('UniversalScheduleService: Simulating conflict resolution', resolutionData);
+      return Promise.resolve({ success: true, message: 'Conflict resolved (mock).' });
+    }
+  }
+
+  async overrideConflict(overrideData) {
+    if (isElectronAvailable()) {
+      try {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to override conflict.');
+        const idToken = await user.getIdToken();
+        // Add userId from token if backend expects it, current overrideData has userId from input
+        return await window.electronAPI.scheduler.overrideConflict({ idToken, overrideData });
+      } catch (error) {
+        console.error('Error overriding conflict via Electron API:', error);
+        throw error;
+      }
+    } else {
+      console.log('UniversalScheduleService: Simulating conflict override', overrideData);
+      return Promise.resolve({ success: true, message: 'Conflict overridden (mock).' });
+    }
+  }
+
+  async getConflictResolutionHistory(limit = 50) {
+    if (isElectronAvailable()) {
+      try {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to get conflict resolution history.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.scheduler.getConflictResolutionHistory({ idToken, limit });
+      } catch (error) {
+        console.error('Error getting conflict resolution history via Electron API:', error);
+        throw error;
+      }
+    } else {
+      console.log('UniversalScheduleService: Returning mock conflict resolution history');
+      return Promise.resolve([
+        { id: 'hist1', resolvedAt: new Date().toISOString(), method: 'resolution', conflictType: 'Double Booking', resolvedBy: 'Admin', note: 'Rescheduled client A' }
+      ]);
     }
   }
 }

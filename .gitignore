@@ -35,3 +35,7 @@ Thumbs.db
 # Secrets
 carewurx-firebase-adminsdk-fbsvc-e7fcc4b08e.json
 serviceAccountKey.json
+scripts/serviceAccountKey.json
+
+# Ignore the old frontend directory as it's been archived
+/app/

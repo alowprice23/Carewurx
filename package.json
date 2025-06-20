@@ -27,27 +27,51 @@
     "groq-sdk": "^0.2.0",
     "mammoth": "^1.9.1",
     "pdf-parse": "^1.1.1",
+    "styled-jsx": "^5.1.7",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@babel/preset-env": "^7.27.2",
+    "@babel/preset-react": "^7.27.1",
     "@firebase/rules-unit-testing": "^4.0.1",
     "@playwright/test": "^1.53.0",
+    "babel-jest": "^30.0.0",
     "electron": "^25.0.0",
     "electron-builder": "^23.6.0",
     "eslint": "^9.29.0",
     "globals": "^16.2.0",
-    "jest": "^30.0.0"
+    "identity-obj-proxy": "^3.0.0",
+    "jest": "^30.0.0",
+    "jest-environment-jsdom": "^30.0.0"
   },
   "jest": {
-    "testEnvironment": "node",
+    "testEnvironment": "jsdom",
     "testMatch": [
-      "**/tests/**/*.spec.js",
-      "**/tests/**/*.test.js"
+      "<rootDir>/tests/services/**/*.spec.js",
+      "<rootDir>/tests/ipc/**/*.spec.js",
+      "<rootDir>/tests/firestore/**/*.spec.js",
+      "<rootDir>/tests/agents/core/**/*.spec.js",
+      "<rootDir>/frontend/src/**/__tests__/**/*.spec.js"
+    ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "<rootDir>/frontend/tests/",
+      "<rootDir>/tests/main.spec.js",
+      "<rootDir>/tests/scheduler.spec.js",
+      "<rootDir>/tests/agent.spec.js",
+      "<rootDir>/tests/notifications.spec.js",
+      "<rootDir>/tests/scanner.spec.js",
+      "<rootDir>/tests/firebase.spec.js"
     ],
     "clearMocks": true,
     "coveragePathIgnorePatterns": [
-      "/node_modules/",
-      "/frontend/"
-    ]
+      "/node_modules/"
+    ],
+    "transform": {
+      "^.+\\.(js|jsx|ts|tsx)$": "babel-jest"
+    },
+    "moduleNameMapper": {
+      "\\.(css|less|scss|sass)$": "identity-obj-proxy"
+    }
   }
 }

@@ -6,8 +6,8 @@
  * the application is running in Electron (with backend access) or in a browser
  * (using mock data).
  */
-
-import { isElectronAvailable } from './firebaseService'; // Corrected import path
+import firebase from './firebase'; // For getting ID token
+import { isElectronAvailable } from './firebaseService';
 
 // Mock data for browser-only mode
 const mockDb = {
@@ -30,16 +30,16 @@ class UniversalDataService {
    */
   async getClients() {
     console.log('UniversalDataService: getClients called');
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) { // Called as a function
       try {
-        const result = await window.electronAPI.getAllClients();
-        // The backend IPC handlers return { success: boolean, data?: any, error?: string }
-        // or directly the data array. Let's assume for getAll it's direct data or needs a check.
-        // Based on main.js, getAllClients directly returns the array.
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to get clients.');
+        const idToken = await user.getIdToken();
+        const result = await window.electronAPI.getAllClients({ idToken });
         return result || [];
       } catch (error) {
         console.error('Error getting clients via Electron API:', error);
-        throw error; // Or return empty array: return [];
+        throw error;
       }
     } else {
       console.log('UniversalDataService: Returning mock clients');
@@ -53,10 +53,12 @@ class UniversalDataService {
    */
   async getCaregivers() {
     console.log('UniversalDataService: getCaregivers called');
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) { // Called as a function
       try {
-        // Assuming getAllCaregivers directly returns the array from backend
-        return await window.electronAPI.getAllCaregivers() || [];
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to get caregivers.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.getAllCaregivers({ idToken }) || [];
       } catch (error) {
         console.error('Error getting caregivers via Electron API:', error);
         throw error;
@@ -74,10 +76,14 @@ class UniversalDataService {
    */
   async getClient(clientId) {
     console.log('UniversalDataService: getClient called with ID:', clientId);
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) { // Called as a function
       try {
-        // Assuming getClient directly returns the client object or null
-        return await window.electronAPI.getClient(clientId);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to get client.');
+        const idToken = await user.getIdToken();
+        // Assuming backend expects { idToken, clientId } or similar if not just one object
+        // Based on main.js changes, handlers expect (event, args) where args contains idToken and other params
+        return await window.electronAPI.getClient({ idToken, clientId });
       } catch (error) {
         console.error(`Error getting client ${clientId} via Electron API:`, error);
         throw error;
@@ -96,9 +102,12 @@ class UniversalDataService {
    */
   async getCaregiver(caregiverId) {
     console.log('UniversalDataService: getCaregiver called with ID:', caregiverId);
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) { // Called as a function
       try {
-        return await window.electronAPI.getCaregiver(caregiverId);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to get caregiver.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.getCaregiver({ idToken, caregiverId });
       } catch (error) {
         console.error(`Error getting caregiver ${caregiverId} via Electron API:`, error);
         throw error;
@@ -117,9 +126,12 @@ class UniversalDataService {
    */
   async createClient(clientData) {
     console.log('UniversalDataService: createClient called with data:', clientData);
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) { // Called as a function
       try {
-        const response = await window.electronAPI.createClient(clientData);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to create client.');
+        const idToken = await user.getIdToken();
+        const response = await window.electronAPI.createClient({ idToken, clientData });
         if (response && response.success) {
           return response.data;
         } else {
@@ -149,9 +161,12 @@ class UniversalDataService {
    */
   async createCaregiver(caregiverData) {
     console.log('UniversalDataService: createCaregiver called with data:', caregiverData);
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) { // Called as a function
       try {
-        const response = await window.electronAPI.createCaregiver(caregiverData);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to create caregiver.');
+        const idToken = await user.getIdToken();
+        const response = await window.electronAPI.createCaregiver({ idToken, caregiverData });
         if (response && response.success) {
           return response.data;
         } else {
@@ -182,19 +197,14 @@ class UniversalDataService {
    */
   async updateClient(clientId, clientData) {
     console.log('UniversalDataService: updateClient called for ID:', clientId, 'with data:', clientData);
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) { // Called as a function
       try {
-        // The updateClient IPC handler in main.js returns the updated data or throws.
-        // Let's assume it returns { success: true, data: updatedDoc } or { success: false, error: ... }
-        // Based on main.js, updateClient returns the result of firebaseService.updateClient,
-        // which is { success: true, id: docId }
-        // This needs to be consistent. For now, assuming it returns the updated document.
-        const response = await window.electronAPI.updateClient(clientId, clientData);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to update client.');
+        const idToken = await user.getIdToken();
+        const response = await window.electronAPI.updateClient({ idToken, clientId, clientData });
          if (response && response.success) {
-          // The backend currently returns { success: true, id: docId }.
-          // For consistency in frontend service, it might be better if backend returns the full updated doc.
-          // Or frontend can re-fetch. For now, returning the input data merged with id.
-          return { id: clientId, ...clientData };
+          return { id: clientId, ...clientData }; // Assuming success means data is applied
         } else {
           throw new Error(response.error || `Failed to update client ${clientId} via Electron API`);
         }
@@ -225,11 +235,13 @@ class UniversalDataService {
    */
   async updateCaregiver(caregiverId, caregiverData) {
     console.log('UniversalDataService: updateCaregiver called for ID:', caregiverId, 'with data:', caregiverData);
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) { // Called as a function
       try {
-        const response = await window.electronAPI.updateCaregiver(caregiverId, caregiverData);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to update caregiver.');
+        const idToken = await user.getIdToken();
+        const response = await window.electronAPI.updateCaregiver({ idToken, caregiverId, caregiverData });
         if (response && response.success) {
-           // Similar to updateClient, returning merged data for now.
           return { id: caregiverId, ...caregiverData };
         } else {
           throw new Error(response.error || `Failed to update caregiver ${caregiverId} via Electron API`);
@@ -260,9 +272,12 @@ class UniversalDataService {
    */
   async deleteClient(clientId) {
     console.log('UniversalDataService: deleteClient called for ID:', clientId);
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) { // Called as a function
       try {
-        const response = await window.electronAPI.deleteClient(clientId);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to delete client.');
+        const idToken = await user.getIdToken();
+        const response = await window.electronAPI.deleteClient({ idToken, clientId });
         if (response && response.success) {
           return response;
         } else {
@@ -270,7 +285,7 @@ class UniversalDataService {
         }
       } catch (error) {
         console.error(`Error deleting client ${clientId} via Electron API:`, error);
-        throw error; // Re-throw or return { success: false, error: error.message }
+        throw error;
       }
     } else {
       console.log(`UniversalDataService: Simulating client deletion for ID: ${clientId}`);
@@ -290,9 +305,12 @@ class UniversalDataService {
    */
   async deleteCaregiver(caregiverId) {
     console.log('UniversalDataService: deleteCaregiver called for ID:', caregiverId);
-    if (isElectronAvailable) {
+    if (isElectronAvailable()) { // Called as a function
       try {
-        const response = await window.electronAPI.deleteCaregiver(caregiverId);
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to delete caregiver.');
+        const idToken = await user.getIdToken();
+        const response = await window.electronAPI.deleteCaregiver({ idToken, caregiverId });
          if (response && response.success) {
           return response;
         } else {

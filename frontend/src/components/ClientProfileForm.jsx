@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  firebaseService,
-  notificationService 
+  notificationService,
+  universalDataService,
+  universalScheduleService
 } from '../services';
+// No direct firebaseService.db needed anymore
 
 /**
  * Client Profile Form - Simplified
@@ -69,71 +71,72 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
     const loadClientData = async () => {
       setLoading(true);
       setIsNewClient(false);
+      setError(null); // Clear previous errors
       
       try {
         // Load basic profile
-        const clientDoc = await firebaseService.db.collection('clients').doc(clientId).get();
-        if (clientDoc.exists) {
-          const data = clientDoc.data();
+        const clientData = await universalDataService.getClient(clientId);
+        if (clientData) {
           setProfileData({
-            firstName: data.firstName || '',
-            lastName: data.lastName || '',
-            email: data.email || '',
-            phone: data.phone || '',
-            address: data.address || '',
-            careNeeds: data.careNeeds || [],
-            transportation: data.transportation || {
+            firstName: clientData.firstName || '',
+            lastName: clientData.lastName || '',
+            email: clientData.email || '',
+            phone: clientData.phone || '',
+            address: clientData.address || '',
+            careNeeds: clientData.careNeeds || [],
+            transportation: clientData.transportation || {
               onBusLine: false,
               requiresDriverCaregiver: false,
               mobilityEquipment: []
             }
           });
           
-          if (data.serviceHours) {
+          if (clientData.serviceHours) {
             setScheduleData(prev => ({
               ...prev,
-              serviceHours: data.serviceHours
+              serviceHours: clientData.serviceHours
             }));
           }
+        } else {
+          setError(`Client with ID ${clientId} not found.`);
+          notificationService.showNotification(`Client with ID ${clientId} not found.`, 'error');
+          // Potentially call onCancel or redirect if client not found
+          return;
         }
         
-        // Load recurring schedules
-        const recurringSchedulesSnapshot = await firebaseService.db.collection('schedules')
-          .where('client_id', '==', clientId)
-          .where('isRecurring', '==', true)
-          .get();
-          
-        const recurringSchedules = recurringSchedulesSnapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            dayOfWeek: data.dayOfWeek,
-            startTime: data.startTime,
-            endTime: data.endTime,
-            careNeeds: data.careNeeds || [],
-            notes: data.notes || '',
-            recurrenceType: data.recurrenceType || 'weekly',
-            recurrenceInterval: data.recurrenceInterval || 1,
-            startDate: data.startDate || new Date().toISOString().split('T')[0]
-          };
-        });
+        // Load all schedules for the client
+        const allSchedules = await universalScheduleService.getSchedules({ clientId, includeDetails: true });
         
-        // Load single date schedules
-        const singleDateSchedulesSnapshot = await firebaseService.db.collection('schedules')
-          .where('client_id', '==', clientId)
-          .where('isRecurring', '==', false)
-          .get();
-        
-        const singleDateSchedules = singleDateSchedulesSnapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            date: data.date,
-            startTime: data.startTime,
-            endTime: data.endTime,
-            careNeeds: data.careNeeds || [],
-            notes: data.notes || ''
+        const recurringSchedules = [];
+        const singleDateSchedules = [];
+
+        allSchedules.forEach(schedule => {
+          // Assuming schedule objects from universalScheduleService have an `id` property
+          // and match the fields expected by the form state.
+          // Timestamps might need conversion if they are Firestore Timestamps.
+          // For now, assuming they are ISO strings or directly usable.
+          const commonScheduleData = {
+            id: schedule.id,
+            startTime: schedule.startTime, // Ensure format matches (e.g., "HH:mm")
+            endTime: schedule.endTime,   // Ensure format matches
+            careNeeds: schedule.careNeeds || [],
+            notes: schedule.notes || ''
           };
+
+          if (schedule.isRecurring) {
+            recurringSchedules.push({
+              ...commonScheduleData,
+              dayOfWeek: schedule.dayOfWeek, // Or recurringPattern.dayOfWeek
+              recurrenceType: schedule.recurrenceType || schedule.recurringPattern?.type || 'weekly',
+              recurrenceInterval: schedule.recurrenceInterval || schedule.recurringPattern?.interval || 1,
+              startDate: schedule.startDate || schedule.recurringPattern?.startDate || new Date().toISOString().split('T')[0]
+            });
+          } else {
+            singleDateSchedules.push({
+              ...commonScheduleData,
+              date: schedule.date // Ensure format matches (e.g., "YYYY-MM-DD")
+            });
+          }
         });
         
         setScheduleData(prev => ({
@@ -141,9 +144,11 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
           recurringSchedules,
           singleDateSchedules
         }));
+
       } catch (err) {
-        console.error('Error loading client data:', err);
-        setError('Failed to load client data');
+        console.error('Error loading client data via service:', err);
+        setError('Failed to load client data. Please try again.');
+        notificationService.showNotification('Failed to load client data.', 'error');
       } finally {
         setLoading(false);
       }
@@ -326,117 +331,119 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    
+    setError(null); // Clear previous errors
+
     try {
-      let id = clientId;
+      let currentClientId = clientId;
       
       // 1. Save basic profile data
+      const clientPayload = {
+        ...profileData, // Contains firstName, lastName, email, phone, address, careNeeds, transportation
+        serviceHours: scheduleData.serviceHours, // Add serviceHours here
+        // serviceStatus, createdAt, updatedAt will be handled by the service or backend
+      };
+
       if (isNewClient) {
-        // Create new client
-        const newDocRef = await firebaseService.db.collection('clients').add({
-          ...profileData,
-          serviceHours: scheduleData.serviceHours,
-          serviceStatus: 'Active',
-          createdAt: new Date(),
-          updatedAt: new Date()
-        });
-        
-        id = newDocRef.id;
+        const createdClient = await universalDataService.createClient(clientPayload);
+        if (!createdClient || !createdClient.id) {
+          throw new Error('Failed to create client or received no ID.');
+        }
+        currentClientId = createdClient.id;
+        notificationService.showNotification('Client created successfully!', 'success');
       } else {
-        // Update existing client
-        await firebaseService.db.collection('clients')
-          .doc(id)
-          .update({
-            ...profileData,
-            serviceHours: scheduleData.serviceHours,
-            updatedAt: new Date()
-          });
+        await universalDataService.updateClient(currentClientId, clientPayload);
+        notificationService.showNotification('Client updated successfully!', 'success');
+      }
+
+      // 2. Sync Schedules
+      if (!currentClientId) {
+        // This should ideally not happen if create/update client was successful and an ID was obtained.
+        throw new Error("Client ID is missing, cannot process schedules.");
+      }
+
+      const existingSchedules = await universalScheduleService.getSchedules({ clientId: currentClientId, includeDetails: true });
+      const existingRecurring = existingSchedules.filter(s => s.isRecurring);
+      const existingSingle = existingSchedules.filter(s => !s.isRecurring);
+
+      const formRecurringSchedules = scheduleData.recurringSchedules || [];
+      const formSingleDateSchedules = scheduleData.singleDateSchedules || [];
+
+      // Helper to compare schedules (excluding id, clientId, and timestamps)
+      // This is a simplified comparison; more robust might be needed for deeply nested objects if any.
+      const schedulesAreEqual = (formSched, existingSched) => {
+        const fieldsToCompare = ['dayOfWeek', 'startTime', 'endTime', 'notes', 'recurrenceType', 'recurrenceInterval', 'startDate', 'date', 'isRecurring'];
+        // Add careNeeds comparison if it's an array of complex objects that need deep compare
+        for (const field of fieldsToCompare) {
+          if (formSched[field] !== existingSched[field]) return false;
+        }
+        // Simple careNeeds comparison (assumes array of strings or simple values)
+        if (JSON.stringify(formSched.careNeeds?.sort()) !== JSON.stringify(existingSched.careNeeds?.sort())) return false;
+        return true;
+      };
+      
+      // --- Process Recurring Schedules ---
+      // Deletions: existing recurring not in form's recurring
+      for (const existing of existingRecurring) {
+        if (!formRecurringSchedules.find(formSched => formSched.id === existing.id)) {
+          await universalScheduleService.deleteSchedule(existing.id);
+        }
+      }
+      // Updates & Creations
+      for (const formSched of formRecurringSchedules) {
+        const payload = { ...formSched, clientId: currentClientId, isRecurring: true };
+        delete payload.id; // Remove ID for create/update payload where ID is path param
+
+        if (formSched.id) { // Potential Update
+          const existingMatch = existingRecurring.find(s => s.id === formSched.id);
+          if (existingMatch && !schedulesAreEqual(formSched, existingMatch)) { // Check if changed
+             // Ensure only relevant fields are sent for update; services should handle this
+            await universalScheduleService.updateSchedule(formSched.id, payload);
+          }
+        } else { // Creation
+          await universalScheduleService.createSchedule(payload);
+        }
+      }
+
+      // --- Process Single-Date Schedules ---
+      // Deletions
+      for (const existing of existingSingle) {
+        if (!formSingleDateSchedules.find(formSched => formSched.id === existing.id)) {
+          await universalScheduleService.deleteSchedule(existing.id);
+        }
+      }
+      // Updates & Creations
+      for (const formSched of formSingleDateSchedules) {
+        const payload = { ...formSched, clientId: currentClientId, isRecurring: false };
+        delete payload.id;
+
+        if (formSched.id) { // Potential Update
+          const existingMatch = existingSingle.find(s => s.id === formSched.id);
+          if (existingMatch && !schedulesAreEqual(formSched, existingMatch)) { // Check if changed
+            await universalScheduleService.updateSchedule(formSched.id, payload);
+          }
+        } else { // Creation
+          await universalScheduleService.createSchedule(payload);
+        }
       }
       
-      // 2. Save schedules using batch operation
-      const batch = firebaseService.db.batch();
-      
-      // Handle existing schedules if not a new client
-      if (!isNewClient) {
-        // Get and delete existing recurring schedules
-        const existingRecurringSnapshot = await firebaseService.db.collection('schedules')
-          .where('client_id', '==', id)
-          .where('isRecurring', '==', true)
-          .get();
-        
-        existingRecurringSnapshot.docs.forEach(doc => {
-          batch.delete(doc.ref);
-        });
-        
-        // Get and delete existing single date schedules
-        const existingSingleDateSnapshot = await firebaseService.db.collection('schedules')
-          .where('client_id', '==', id)
-          .where('isRecurring', '==', false)
-          .get();
-        
-        existingSingleDateSnapshot.docs.forEach(doc => {
-          batch.delete(doc.ref);
-        });
-      }
-      
-      // Create new recurring schedules
-      for (const schedule of scheduleData.recurringSchedules) {
-        const newScheduleRef = firebaseService.db.collection('schedules').doc();
-        
-        batch.set(newScheduleRef, {
-          client_id: id,
-          dayOfWeek: schedule.dayOfWeek,
-          startTime: schedule.startTime,
-          endTime: schedule.endTime,
-          careNeeds: schedule.careNeeds,
-          notes: schedule.notes,
-          isRecurring: true,
-          recurrenceType: schedule.recurrenceType || 'weekly',
-          recurrenceInterval: schedule.recurrenceInterval || 1,
-          startDate: schedule.startDate || new Date().toISOString().split('T')[0],
-          status: 'Needs Assignment',
-          caregiver_id: '',
-          createdAt: new Date(),
-          updatedAt: new Date()
-        });
-      }
-      
-      // Create new single date schedules
-      for (const schedule of scheduleData.singleDateSchedules) {
-        const newScheduleRef = firebaseService.db.collection('schedules').doc();
-        
-        batch.set(newScheduleRef, {
-          client_id: id,
-          date: schedule.date,
-          startTime: schedule.startTime,
-          endTime: schedule.endTime,
-          careNeeds: schedule.careNeeds,
-          notes: schedule.notes,
-          isRecurring: false,
-          status: 'Needs Assignment',
-          caregiver_id: '',
-          createdAt: new Date(),
-          updatedAt: new Date()
-        });
-      }
-      
-      await batch.commit();
-      
-      notificationService.showNotification(
-        `Client ${isNewClient ? 'created' : 'updated'} successfully`,
-        'success'
-      );
+      // General success message was already shown for client profile.
+      // Could add a specific "Schedules updated" if needed, but might be too noisy.
+      // notificationService.showNotification(
+      //   `Client schedules ${isNewClient ? 'created' : 'updated'} successfully`,
+      //   'success'
+      // ); // This might be redundant if previous notification is sufficient
       
       if (onSave) {
-        onSave(id);
+        onSave(currentClientId); // Pass the client ID (new or existing)
       }
     } catch (err) {
-      console.error('Error saving client:', err);
-      setError(`Failed to ${isNewClient ? 'create' : 'update'} client`);
+      console.error('Error saving client and schedules via service:', err);
+      setError(`Failed to ${isNewClient ? 'create' : 'update'} client: ${err.message}`);
       notificationService.showNotification(
-        `Failed to ${isNewClient ? 'create' : 'update'} client`,
-        'error'
+        `Failed to ${isNewClient ? 'create' : 'update'} client: ${err.message}`,
+        'error' // Corrected notification type
       );
+      // Removed onSave(id) from catch block and the duplicate catch block
     } finally {
       setLoading(false);
     }
@@ -475,8 +482,9 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
           <div className="form-section">
             <div className="form-row">
               <div className="form-group">
-                <label>First Name</label>
+                <label htmlFor="firstNameInput">First Name</label>
                 <input
+                  id="firstNameInput"
                   type="text"
                   name="firstName"
                   value={profileData.firstName || ''}
@@ -485,8 +493,9 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
                 />
               </div>
               <div className="form-group">
-                <label>Last Name</label>
+                <label htmlFor="lastNameInput">Last Name</label>
                 <input
+                  id="lastNameInput"
                   type="text"
                   name="lastName"
                   value={profileData.lastName || ''}
@@ -498,8 +507,9 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
             
             <div className="form-row">
               <div className="form-group">
-                <label>Email</label>
+                <label htmlFor="emailInput">Email</label>
                 <input
+                  id="emailInput"
                   type="email"
                   name="email"
                   value={profileData.email || ''}
@@ -507,8 +517,9 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
                 />
               </div>
               <div className="form-group">
-                <label>Phone</label>
+                <label htmlFor="phoneInput">Phone</label>
                 <input
+                  id="phoneInput"
                   type="tel"
                   name="phone"
                   value={profileData.phone || ''}
@@ -519,8 +530,9 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
             </div>
             
             <div className="form-group">
-              <label>Address</label>
+              <label htmlFor="addressInput">Address</label>
               <textarea
+                id="addressInput"
                 name="address"
                 value={profileData.address || ''}
                 onChange={handleProfileChange}
@@ -531,8 +543,9 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
             <h3>Transportation</h3>
             <div className="form-row">
               <div className="form-group">
-                <label>
+                <label htmlFor="onBusLineCheckbox">
                   <input
+                    id="onBusLineCheckbox"
                     type="checkbox"
                     name="transportation.onBusLine"
                     checked={profileData.transportation?.onBusLine || false}
@@ -543,8 +556,9 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
               </div>
               
               <div className="form-group">
-                <label>
+                <label htmlFor="requiresDriverCaregiverCheckbox">
                   <input
+                    id="requiresDriverCaregiverCheckbox"
                     type="checkbox"
                     name="transportation.requiresDriverCaregiver"
                     checked={profileData.transportation?.requiresDriverCaregiver || false}
@@ -566,8 +580,9 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
             <div className="care-needs-container">
               {CARE_NEEDS.map(need => (
                 <div key={need.id} className="care-need-checkbox">
-                  <label>
+                  <label htmlFor={`careNeed-${need.id}`}>
                     <input
+                      id={`careNeed-${need.id}`}
                       type="checkbox"
                       checked={profileData.careNeeds?.some(clientNeed => 
                         typeof clientNeed === 'object' 
@@ -590,8 +605,9 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
             <h3>Service Hours</h3>
             
             <div className="form-group">
-              <label>Hours Per Week</label>
+              <label htmlFor="hoursPerWeekInput">Hours Per Week</label>
               <input
+                id="hoursPerWeekInput"
                 type="number"
                 name="hoursPerWeek"
                 min="0"
@@ -609,13 +625,14 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
             
             <h4>Preferred Days</h4>
             <div className="days-container">
-              {DAYS_OF_WEEK.map((day, index) => (
-                <div key={index} className="day-checkbox">
-                  <label>
+              {DAYS_OF_WEEK.map((day, dayIndex) => ( // Use dayIndex to avoid conflict with map index if used elsewhere
+                <div key={dayIndex} className="day-checkbox">
+                  <label htmlFor={`preferredDay-${dayIndex}`}>
                     <input
+                      id={`preferredDay-${dayIndex}`}
                       type="checkbox"
-                      checked={scheduleData.serviceHours?.preferredDays?.includes(index) || false}
-                      onChange={() => handlePreferredDayToggle(index)}
+                      checked={scheduleData.serviceHours?.preferredDays?.includes(dayIndex) || false}
+                      onChange={() => handlePreferredDayToggle(dayIndex)}
                     />
                     {day}
                   </label>
@@ -629,8 +646,9 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
               <div key={index} className="schedule-entry">
                 <div className="form-row">
                   <div className="form-group">
-                    <label>Day of Week</label>
+                    <label htmlFor={`recurringDayOfWeek-${index}`}>Day of Week</label>
                     <select
+                      id={`recurringDayOfWeek-${index}`}
                       value={schedule.dayOfWeek}
                       onChange={(e) => handleRecurringScheduleChange(index, 'dayOfWeek', e.target.value)}
                     >
@@ -641,8 +659,9 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
                   </div>
                   
                   <div className="form-group">
-                    <label>Start Time</label>
+                    <label htmlFor={`recurringStartTime-${index}`}>Start Time</label>
                     <input
+                      id={`recurringStartTime-${index}`}
                       type="time"
                       value={schedule.startTime}
                       onChange={(e) => handleRecurringScheduleChange(index, 'startTime', e.target.value)}
@@ -650,8 +669,9 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
                   </div>
                   
                   <div className="form-group">
-                    <label>End Time</label>
+                    <label htmlFor={`recurringEndTime-${index}`}>End Time</label>
                     <input
+                      id={`recurringEndTime-${index}`}
                       type="time"
                       value={schedule.endTime}
                       onChange={(e) => handleRecurringScheduleChange(index, 'endTime', e.target.value)}
@@ -659,8 +679,9 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
                   </div>
                   
                   <div className="form-group">
-                    <label>Recurrence</label>
+                    <label htmlFor={`recurringRecurrenceType-${index}`}>Recurrence</label>
                     <select
+                      id={`recurringRecurrenceType-${index}`}
                       value={schedule.recurrenceType || 'weekly'}
                       onChange={(e) => handleRecurringScheduleChange(index, 'recurrenceType', e.target.value)}
                     >
@@ -671,8 +692,9 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
                   </div>
                   
                   <div className="form-group">
-                    <label>Start Date</label>
+                    <label htmlFor={`recurringStartDate-${index}`}>Start Date</label>
                     <input
+                      id={`recurringStartDate-${index}`}
                       type="date"
                       value={schedule.startDate || new Date().toISOString().split('T')[0]}
                       onChange={(e) => handleRecurringScheduleChange(index, 'startDate', e.target.value)}
@@ -702,8 +724,9 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
               <div key={index} className="schedule-entry">
                 <div className="form-row">
                   <div className="form-group">
-                    <label>Date</label>
+                    <label htmlFor={`singleDateDate-${index}`}>Date</label>
                     <input
+                      id={`singleDateDate-${index}`}
                       type="date"
                       value={schedule.date}
                       onChange={(e) => handleSingleDateScheduleChange(index, 'date', e.target.value)}
@@ -711,8 +734,9 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
                   </div>
                   
                   <div className="form-group">
-                    <label>Start Time</label>
+                    <label htmlFor={`singleDateStartTime-${index}`}>Start Time</label>
                     <input
+                      id={`singleDateStartTime-${index}`}
                       type="time"
                       value={schedule.startTime}
                       onChange={(e) => handleSingleDateScheduleChange(index, 'startTime', e.target.value)}
@@ -720,8 +744,9 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
                   </div>
                   
                   <div className="form-group">
-                    <label>End Time</label>
+                    <label htmlFor={`singleDateEndTime-${index}`}>End Time</label>
                     <input
+                      id={`singleDateEndTime-${index}`}
                       type="time"
                       value={schedule.endTime}
                       onChange={(e) => handleSingleDateScheduleChange(index, 'endTime', e.target.value)}

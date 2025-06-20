@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  firebaseService,
-  notificationService 
+  notificationService,
+  universalDataService,
+  availabilityService
 } from '../services';
+import AvailabilityManager from './AvailabilityManager'; // Import AvailabilityManager
 
 /**
  * Caregiver Profile Form
@@ -57,53 +59,57 @@ const CaregiverProfileForm = ({ caregiverId, onSave, onCancel, initialTab = 'bas
     const loadCaregiverData = async () => {
       if (!caregiverId) {
         setIsNewCaregiver(true);
+        setProfileData({ // Reset profile data for new caregiver
+            firstName: '', lastName: '', email: '', phone: '', address: '', skills: [],
+            transportation: { hasCar: false, hasLicense: false, usesPublicTransport: false, travelRadius: 10 }
+        });
+        setAvailabilityData({ regularSchedule: [], timeOff: [] }); // Reset availability
         return;
       }
       
       setLoading(true);
       setIsNewCaregiver(false);
+      setError(null);
       
       try {
         // Load basic profile data
-        const caregiverDoc = await firebaseService.db.collection('caregivers')
-          .doc(caregiverId)
-          .get();
+        const profile = await universalDataService.getCaregiver(caregiverId);
           
-        if (caregiverDoc.exists) {
-          setProfileData(caregiverDoc.data());
+        if (profile) {
+          // Ensure transportation is an object, even if undefined in fetched data
+          profile.transportation = profile.transportation || { hasCar: false, hasLicense: false, usesPublicTransport: false, travelRadius: 10 };
+          setProfileData(profile);
         } else {
           setError('Caregiver not found');
+          notificationService.showNotification('Caregiver not found', 'error');
+          return; // Stop further loading if caregiver not found
         }
         
         // Load availability data
-        const availabilityDoc = await firebaseService.db.collection('caregiver_availability')
-          .doc(caregiverId)
-          .get();
+        const availability = await availabilityService.getCaregiverAvailability(caregiverId);
           
-        if (availabilityDoc.exists) {
-          const data = availabilityDoc.data();
-          
-          // Process time off dates (convert Timestamps to strings)
-          const timeOff = (data.timeOff || []).map(item => ({
+        if (availability) {
+          // Assuming availabilityService already processes Timestamps to strings if needed
+          // or that AvailabilityManager can handle them.
+          // For consistency with previous logic, ensure dates are strings.
+          const processedTimeOff = (availability.timeOff || []).map(item => ({
             ...item,
-            startDate: item.startDate?.toDate?.() 
-              ? item.startDate.toDate().toISOString().split('T')[0]
-              : item.startDate,
-            endDate: item.endDate?.toDate?.() 
-              ? item.endDate.toDate().toISOString().split('T')[0]
-              : item.endDate
+            startDate: typeof item.startDate === 'string' ? item.startDate : item.startDate?.toDate?.().toISOString().split('T')[0] || '',
+            endDate: typeof item.endDate === 'string' ? item.endDate : item.endDate?.toDate?.().toISOString().split('T')[0] || '',
           }));
-          
           setAvailabilityData({
-            regularSchedule: data.regularSchedule || [],
-            timeOff
+            regularSchedule: availability.regularSchedule || [],
+            timeOff: processedTimeOff
           });
+        } else {
+          // No availability record found, initialize with empty state
+          setAvailabilityData({ regularSchedule: [], timeOff: [] });
         }
       } catch (err) {
-        console.error('Error loading caregiver data:', err);
-        setError('Failed to load caregiver data');
+        console.error('Error loading caregiver data via service:', err);
+        setError('Failed to load caregiver data. Please try again.');
         notificationService.showNotification(
-          'Failed to load caregiver data',
+          'Failed to load caregiver data: ' + err.message,
           'error'
         );
       } finally {
@@ -156,147 +162,65 @@ const CaregiverProfileForm = ({ caregiverId, onSave, onCancel, initialTab = 'bas
     });
   };
   
-  // Handle adding a regular schedule entry
-  const handleAddScheduleEntry = () => {
-    setAvailabilityData(prev => ({
-      ...prev,
-      regularSchedule: [
-        ...prev.regularSchedule,
-        {
-          dayOfWeek: 1, // Default to Monday
-          startTime: '09:00',
-          endTime: '17:00',
-          recurrenceType: 'Weekly'
-        }
-      ]
-    }));
-  };
   
-  // Handle removing a regular schedule entry
-  const handleRemoveScheduleEntry = (index) => {
-    setAvailabilityData(prev => ({
-      ...prev,
-      regularSchedule: prev.regularSchedule.filter((_, i) => i !== index)
-    }));
+  // Callback for AvailabilityManager to update parent state
+  const handleAvailabilityChangeInForm = (newAvailability) => {
+    setAvailabilityData(newAvailability);
   };
-  
-  // Handle schedule entry changes
-  const handleScheduleEntryChange = (index, field, value) => {
-    setAvailabilityData(prev => {
-      const updatedSchedule = [...prev.regularSchedule];
-      updatedSchedule[index] = {
-        ...updatedSchedule[index],
-        [field]: field === 'dayOfWeek' ? parseInt(value, 10) : value
-      };
-      
-      return {
-        ...prev,
-        regularSchedule: updatedSchedule
-      };
-    });
-  };
-  
-  // Handle adding time off
-  const handleAddTimeOff = () => {
-    const today = new Date().toISOString().split('T')[0];
-    const nextWeek = new Date();
-    nextWeek.setDate(nextWeek.getDate() + 7);
-    
-    setAvailabilityData(prev => ({
-      ...prev,
-      timeOff: [
-        ...prev.timeOff,
-        {
-          startDate: today,
-          endDate: nextWeek.toISOString().split('T')[0],
-          reason: 'Time Off',
-          status: 'Pending'
-        }
-      ]
-    }));
-  };
-  
-  // Handle removing time off
-  const handleRemoveTimeOff = (index) => {
-    setAvailabilityData(prev => ({
-      ...prev,
-      timeOff: prev.timeOff.filter((_, i) => i !== index)
-    }));
-  };
-  
-  // Handle time off changes
-  const handleTimeOffChange = (index, field, value) => {
-    setAvailabilityData(prev => {
-      const updatedTimeOff = [...prev.timeOff];
-      updatedTimeOff[index] = {
-        ...updatedTimeOff[index],
-        [field]: value
-      };
-      
-      return {
-        ...prev,
-        timeOff: updatedTimeOff
-      };
-    });
-  };
+
+  // Removed direct availability manipulation functions:
+  // handleAddScheduleEntry, handleRemoveScheduleEntry, handleScheduleEntryChange,
+  // handleAddTimeOff, handleRemoveTimeOff, handleTimeOffChange
+  // These are now managed by AvailabilityManager.
   
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    
+    setError(null);
+
     try {
-      let id = caregiverId;
+      let currentCaregiverId = caregiverId;
       
       // 1. Save basic profile data
+      // Ensure profileData includes any necessary defaults or transformations before saving
+      const profileToSave = { ...profileData };
+      // Remove fields that should not be directly written if services don't expect them (e.g. id if it's part of URL)
+      // delete profileToSave.id; // Example, if 'id' is not part of caregiver document fields
+
       if (isNewCaregiver) {
-        // Create new caregiver
-        const newDocRef = await firebaseService.db.collection('caregivers').add({
-          ...profileData,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          status: 'Active'
-        });
-        
-        id = newDocRef.id;
+        const createdCaregiver = await universalDataService.createCaregiver(profileToSave);
+        if (!createdCaregiver || !createdCaregiver.id) {
+          throw new Error('Failed to create caregiver or received no ID.');
+        }
+        currentCaregiverId = createdCaregiver.id;
+        notificationService.showNotification('Caregiver created successfully!', 'success');
       } else {
-        // Update existing caregiver
-        await firebaseService.db.collection('caregivers')
-          .doc(id)
-          .update({
-            ...profileData,
-            updatedAt: new Date()
-          });
+        if (!currentCaregiverId) throw new Error("Caregiver ID is missing for update.");
+        await universalDataService.updateCaregiver(currentCaregiverId, profileToSave);
+        notificationService.showNotification('Caregiver updated successfully!', 'success');
       }
       
       // 2. Save availability data
-      await firebaseService.db.collection('caregiver_availability')
-        .doc(id)
-        .set({
-          caregiverId: id,
-          regularSchedule: availabilityData.regularSchedule,
-          timeOff: availabilityData.timeOff.map(item => ({
-            ...item,
-            startDate: new Date(item.startDate),
-            endDate: new Date(item.endDate)
-          })),
-          lastUpdated: new Date()
-        }, { merge: true });
+      if (!currentCaregiverId) {
+        throw new Error("Caregiver ID is missing, cannot save availability.");
+      }
       
-      notificationService.showNotification(
-        `Caregiver ${isNewCaregiver ? 'created' : 'updated'} successfully`,
-        'success'
-      );
+      // The availabilityData state is already up-to-date via onAvailabilityChange from AvailabilityManager
+      // The availabilityService is expected to handle date string to Timestamp conversion if needed.
+      await availabilityService.updateCaregiverAvailability(currentCaregiverId, availabilityData);
       
-      // Call the onSave callback with the caregiver ID
+      // No separate notification for availability save unless desired for more granular feedback.
+      // The main profile save notification usually suffices.
+
       if (onSave) {
-        onSave(id);
+        onSave(currentCaregiverId); // Pass the caregiver ID (new or existing)
       }
     } catch (err) {
-      console.error('Error saving caregiver:', err);
-      setError(`Failed to ${isNewCaregiver ? 'create' : 'update'} caregiver`);
+      console.error('Error saving caregiver profile or availability:', err);
+      setError(`Failed to ${isNewCaregiver ? 'create' : 'update'} caregiver: ${err.message}`);
       notificationService.showNotification(
-        `Failed to ${isNewCaregiver ? 'create' : 'update'} caregiver`,
+        `Failed to ${isNewCaregiver ? 'create' : 'update'} caregiver: ${err.message}`,
         'error'
       );
     } finally {
@@ -481,144 +405,14 @@ const CaregiverProfileForm = ({ caregiverId, onSave, onCancel, initialTab = 'bas
         
         {/* Availability Tab */}
         {activeTab === 'availability' && (
-          <div className="form-section">
-            <h3>Regular Weekly Schedule</h3>
-            <p className="section-description">
-              Set the caregiver's regular weekly availability. This helps match them with appropriate client schedules.
-            </p>
-            
-            {availabilityData.regularSchedule.length === 0 ? (
-              <div className="empty-schedule-message">
-                No regular schedule set. Add availability using the button below.
-              </div>
-            ) : (
-              <div className="schedule-entries">
-                {availabilityData.regularSchedule.map((entry, index) => (
-                  <div key={index} className="schedule-entry">
-                    <div className="form-row">
-                      <div className="form-group">
-                        <label htmlFor={`day-${index}`}>Day</label>
-                        <select
-                          id={`day-${index}`}
-                          value={entry.dayOfWeek}
-                          onChange={(e) => handleScheduleEntryChange(index, 'dayOfWeek', e.target.value)}
-                        >
-                          <option value={0}>Sunday</option>
-                          <option value={1}>Monday</option>
-                          <option value={2}>Tuesday</option>
-                          <option value={3}>Wednesday</option>
-                          <option value={4}>Thursday</option>
-                          <option value={5}>Friday</option>
-                          <option value={6}>Saturday</option>
-                        </select>
-                      </div>
-                      
-                      <div className="form-group">
-                        <label htmlFor={`start-${index}`}>Start Time</label>
-                        <input
-                          type="time"
-                          id={`start-${index}`}
-                          value={entry.startTime}
-                          onChange={(e) => handleScheduleEntryChange(index, 'startTime', e.target.value)}
-                        />
-                      </div>
-                      
-                      <div className="form-group">
-                        <label htmlFor={`end-${index}`}>End Time</label>
-                        <input
-                          type="time"
-                          id={`end-${index}`}
-                          value={entry.endTime}
-                          onChange={(e) => handleScheduleEntryChange(index, 'endTime', e.target.value)}
-                        />
-                      </div>
-                      
-                      <button
-                        type="button"
-                        className="remove-button"
-                        onClick={() => handleRemoveScheduleEntry(index)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            
-            <button
-              type="button"
-              className="add-button"
-              onClick={handleAddScheduleEntry}
-            >
-              Add Availability
-            </button>
-            
-            <h3>Time Off</h3>
-            <p className="section-description">
-              Add any planned time off or unavailability periods.
-            </p>
-            
-            {availabilityData.timeOff.length === 0 ? (
-              <div className="empty-schedule-message">
-                No time off set. Add time off using the button below.
-              </div>
-            ) : (
-              <div className="time-off-entries">
-                {availabilityData.timeOff.map((entry, index) => (
-                  <div key={index} className="time-off-entry">
-                    <div className="form-row">
-                      <div className="form-group">
-                        <label htmlFor={`startDate-${index}`}>Start Date</label>
-                        <input
-                          type="date"
-                          id={`startDate-${index}`}
-                          value={entry.startDate}
-                          onChange={(e) => handleTimeOffChange(index, 'startDate', e.target.value)}
-                        />
-                      </div>
-                      
-                      <div className="form-group">
-                        <label htmlFor={`endDate-${index}`}>End Date</label>
-                        <input
-                          type="date"
-                          id={`endDate-${index}`}
-                          value={entry.endDate}
-                          onChange={(e) => handleTimeOffChange(index, 'endDate', e.target.value)}
-                        />
-                      </div>
-                      
-                      <div className="form-group">
-                        <label htmlFor={`reason-${index}`}>Reason</label>
-                        <input
-                          type="text"
-                          id={`reason-${index}`}
-                          value={entry.reason}
-                          onChange={(e) => handleTimeOffChange(index, 'reason', e.target.value)}
-                        />
-                      </div>
-                      
-                      <button
-                        type="button"
-                        className="remove-button"
-                        onClick={() => handleRemoveTimeOff(index)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            
-            <button
-              type="button"
-              className="add-button"
-              onClick={handleAddTimeOff}
-            >
-              Add Time Off
-            </button>
-          </div>
+          <AvailabilityManager
+            initialAvailability={availabilityData}
+            onAvailabilityChange={handleAvailabilityChangeInForm}
+            // caregiverId might still be useful for AvailabilityManager if it needs to display it,
+            // but it's not strictly necessary for its new role as a controlled component.
+            // For now, we assume it's not needed by the refactored AvailabilityManager for data ops.
+            // caregiverId={caregiverId || (isNewCaregiver ? 'new' : '')} // Pass if needed
+          />
         )}
         
         <div className="form-actions">

@@ -7,6 +7,9 @@ const {
 const fs = require('fs');
 const path = require('path');
 
+// Attempt to ensure emulator host is set for tests
+process.env.FIRESTORE_EMULATOR_HOST = "localhost:8080";
+
 /** @type {RulesTestEnvironment} */
 let testEnv;
 
@@ -42,8 +45,8 @@ async function setupFirestoreTestEnvironment(rulesPath = 'firestore.rules') {
       projectId: PROJECT_ID,
       firestore: {
         rules: rules,
-        // host: 'localhost', // Default is localhost
-        // port: 8080,      // Default is 8080
+        host: 'localhost', // Explicitly set
+        port: 8080,      // Explicitly set
       },
     });
   } catch (error) {

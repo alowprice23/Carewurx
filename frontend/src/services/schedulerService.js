@@ -2,6 +2,8 @@
  * Scheduler Service
  * Provides interface to schedule management functionality
  */
+import firebase from './firebase';
+import { isElectronAvailable } from './firebaseService';
 
 class SchedulerService {
   /**
@@ -10,14 +12,19 @@ class SchedulerService {
    * @returns {Promise<Object>} - The created schedule
    */
   async createSchedule(scheduleData) {
-    try {
-      if (!window.electronAPI) {
-        throw new Error('Electron API not available - backend connection missing');
+    if (isElectronAvailable()) {
+      try {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to create schedule.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.createSchedule({ idToken, scheduleData });
+      } catch (error) {
+        console.error('Error creating schedule:', error);
+        throw new Error(`Failed to create schedule: ${error.message}`);
       }
-      return await window.electronAPI.createSchedule(scheduleData);
-    } catch (error) {
-      console.error('Error creating schedule:', error);
-      throw new Error(`Failed to create schedule: ${error.message}`);
+    } else {
+      console.warn('SchedulerService: createSchedule called in non-Electron environment.');
+      throw new Error('Electron API not available for schedule creation.');
     }
   }
 
@@ -28,14 +35,19 @@ class SchedulerService {
    * @returns {Promise<Object>} - The updated schedule
    */
   async updateSchedule(scheduleId, updatedData) {
-    try {
-      if (!window.electronAPI) {
-        throw new Error('Electron API not available - backend connection missing');
+    if (isElectronAvailable()) {
+      try {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to update schedule.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.updateSchedule({ idToken, scheduleId, updatedData });
+      } catch (error) {
+        console.error('Error updating schedule:', error);
+        throw new Error(`Failed to update schedule: ${error.message}`);
       }
-      return await window.electronAPI.updateSchedule(scheduleId, updatedData);
-    } catch (error) {
-      console.error('Error updating schedule:', error);
-      throw new Error(`Failed to update schedule: ${error.message}`);
+    } else {
+      console.warn('SchedulerService: updateSchedule called in non-Electron environment.');
+      throw new Error('Electron API not available for schedule update.');
     }
   }
 
@@ -45,14 +57,19 @@ class SchedulerService {
    * @returns {Promise<boolean>} - Success status
    */
   async deleteSchedule(scheduleId) {
-    try {
-      if (!window.electronAPI) {
-        throw new Error('Electron API not available - backend connection missing');
+    if (isElectronAvailable()) {
+      try {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to delete schedule.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.deleteSchedule({ idToken, scheduleId });
+      } catch (error) {
+        console.error('Error deleting schedule:', error);
+        throw new Error(`Failed to delete schedule: ${error.message}`);
       }
-      return await window.electronAPI.deleteSchedule(scheduleId);
-    } catch (error) {
-      console.error('Error deleting schedule:', error);
-      throw new Error(`Failed to delete schedule: ${error.message}`);
+    } else {
+      console.warn('SchedulerService: deleteSchedule called in non-Electron environment.');
+      throw new Error('Electron API not available for schedule deletion.');
     }
   }
 
@@ -62,11 +79,19 @@ class SchedulerService {
    * @returns {Promise<Object>} - The best caregiver match
    */
   async findBestCaregiver(scheduleId) {
-    try {
-      return await window.electronAPI.findBestCaregiver(scheduleId);
-    } catch (error) {
-      console.error('Error finding best caregiver:', error);
-      throw error;
+    if (isElectronAvailable()) {
+      try {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to find best caregiver.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.findBestCaregiver({ idToken, scheduleId });
+      } catch (error) {
+        console.error('Error finding best caregiver:', error);
+        throw new Error(`Failed to find best caregiver: ${error.message}`);
+      }
+    } else {
+      console.warn('SchedulerService: findBestCaregiver called in non-Electron environment.');
+      throw new Error('Electron API not available for finding best caregiver.');
     }
   }
 
@@ -77,11 +102,19 @@ class SchedulerService {
    * @returns {Promise<Object>} - The created schedule
    */
   async createClientSchedule(clientId, scheduleData) {
-    try {
-      return await window.electronAPI.createClientSchedule(clientId, scheduleData);
-    } catch (error) {
-      console.error('Error creating client schedule:', error);
-      throw error;
+    if (isElectronAvailable()) {
+      try {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to create client schedule.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.createClientSchedule({ idToken, clientId, scheduleData });
+      } catch (error) {
+        console.error('Error creating client schedule:', error);
+        throw new Error(`Failed to create client schedule: ${error.message}`);
+      }
+    } else {
+      console.warn('SchedulerService: createClientSchedule called in non-Electron environment.');
+      throw new Error('Electron API not available for creating client schedule.');
     }
   }
 
@@ -92,11 +125,19 @@ class SchedulerService {
    * @returns {Promise<Object>} - The updated schedule
    */
   async assignCaregiverToSchedule(scheduleId, caregiverId) {
-    try {
-      return await window.electronAPI.assignCaregiverToSchedule(scheduleId, caregiverId);
-    } catch (error) {
-      console.error('Error assigning caregiver to schedule:', error);
-      throw error;
+    if (isElectronAvailable()) {
+      try {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to assign caregiver.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.assignCaregiverToSchedule({ idToken, scheduleId, caregiverId });
+      } catch (error) {
+        console.error('Error assigning caregiver to schedule:', error);
+        throw new Error(`Failed to assign caregiver to schedule: ${error.message}`);
+      }
+    } else {
+      console.warn('SchedulerService: assignCaregiverToSchedule called in non-Electron environment.');
+      throw new Error('Electron API not available for assigning caregiver.');
     }
   }
 
@@ -106,11 +147,19 @@ class SchedulerService {
    * @returns {Promise<Array>} - List of available caregivers
    */
   async findAvailableCaregivers(scheduleId) {
-    try {
-      return await window.electronAPI.findAvailableCaregivers(scheduleId);
-    } catch (error) {
-      console.error('Error finding available caregivers:', error);
-      throw error;
+    if (isElectronAvailable()) {
+      try {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to find available caregivers.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.findAvailableCaregivers({ idToken, scheduleId });
+      } catch (error) {
+        console.error('Error finding available caregivers:', error);
+        throw new Error(`Failed to find available caregivers: ${error.message}`);
+      }
+    } else {
+      console.warn('SchedulerService: findAvailableCaregivers called in non-Electron environment.');
+      throw new Error('Electron API not available for finding available caregivers.');
     }
   }
 
@@ -120,11 +169,19 @@ class SchedulerService {
    * @returns {Promise<Array>} - List of conflicts
    */
   async checkConflicts(scheduleId) {
-    try {
-      return await window.electronAPI.checkScheduleConflicts(scheduleId);
-    } catch (error) {
-      console.error('Error checking schedule conflicts:', error);
-      throw error;
+    if (isElectronAvailable()) {
+      try {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to check conflicts.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.checkScheduleConflicts({ idToken, scheduleId });
+      } catch (error) {
+        console.error('Error checking schedule conflicts:', error);
+        throw new Error(`Failed to check conflicts: ${error.message}`);
+      }
+    } else {
+      console.warn('SchedulerService: checkConflicts called in non-Electron environment.');
+      throw new Error('Electron API not available for checking conflicts.');
     }
   }
 
@@ -135,11 +192,19 @@ class SchedulerService {
    * @returns {Promise<Object>} - Resolution result
    */
   async resolveConflict(conflictId, resolution) {
-    try {
-      return await window.electronAPI.resolveScheduleConflict(conflictId, resolution);
-    } catch (error) {
-      console.error('Error resolving schedule conflict:', error);
-      throw error;
+    if (isElectronAvailable()) {
+      try {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to resolve conflict.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.resolveScheduleConflict({ idToken, conflictId, resolution });
+      } catch (error) {
+        console.error('Error resolving schedule conflict:', error);
+        throw new Error(`Failed to resolve conflict: ${error.message}`);
+      }
+    } else {
+      console.warn('SchedulerService: resolveConflict called in non-Electron environment.');
+      throw new Error('Electron API not available for resolving conflict.');
     }
   }
 
@@ -149,11 +214,19 @@ class SchedulerService {
    * @returns {Promise<Object>} - Detailed schedule data
    */
   async getScheduleWithDetails(scheduleId) {
-    try {
-      return await window.electronAPI.getScheduleWithDetails(scheduleId);
-    } catch (error) {
-      console.error('Error getting schedule details:', error);
-      throw error;
+    if (isElectronAvailable()) {
+      try {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to get schedule details.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.getScheduleWithDetails({ idToken, scheduleId });
+      } catch (error) {
+        console.error('Error getting schedule details:', error);
+        throw new Error(`Failed to get schedule with details: ${error.message}`);
+      }
+    } else {
+      console.warn('SchedulerService: getScheduleWithDetails called in non-Electron environment.');
+      throw new Error('Electron API not available for getting schedule details.');
     }
   }
 
@@ -163,11 +236,19 @@ class SchedulerService {
    * @returns {Promise<Object>} - Optimization results
    */
   async optimizeSchedules(date) {
-    try {
-      return await window.electronAPI.optimizeSchedules(date);
-    } catch (error) {
-      console.error('Error optimizing schedules:', error);
-      throw error;
+    if (isElectronAvailable()) {
+      try {
+        const user = firebase.auth().currentUser;
+        if (!user) throw new Error('Authentication required to optimize schedules.');
+        const idToken = await user.getIdToken();
+        return await window.electronAPI.optimizeSchedules({ idToken, date });
+      } catch (error) {
+        console.error('Error optimizing schedules:', error);
+        throw new Error(`Failed to optimize schedules: ${error.message}`);
+      }
+    } else {
+      console.warn('SchedulerService: optimizeSchedules called in non-Electron environment.');
+      throw new Error('Electron API not available for optimizing schedules.');
     }
   }
 }
