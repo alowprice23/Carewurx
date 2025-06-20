@@ -18,9 +18,9 @@ const APIKeyManager = () => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [keyStatus, setKeyStatus] = useState({
-    groq: { isValid: false, lastValidated: null },
-    openai: { isValid: false, lastValidated: null },
-    anthropic: { isValid: false, lastValidated: null }
+    groq: { isSet: false, isValid: false, lastValidated: null },
+    openai: { isSet: false, isValid: false, lastValidated: null },
+    anthropic: { isSet: false, isValid: false, lastValidated: null }
   });
   const [usageStats, setUsageStats] = useState({
     groq: { requests: 0, tokens: 0, lastRequest: null },
@@ -33,20 +33,18 @@ const APIKeyManager = () => {
     const fetchApiKeys = async () => {
       try {
         setLoading(true);
-        const keys = await agentService.getApiKeys();
-        const status = await agentService.getApiKeyStatus();
+        setError(null); // Clear previous errors
+
+        const statuses = await agentService.getApiKeyStatuses();
         const usage = await agentService.getApiUsageStats();
         
-        setApiKeys(keys || {
-          groq: '',
-          openai: '',
-          anthropic: ''
-        });
+        // DO NOT setApiKeys (input fields) from getApiKeyStatuses
         
-        setKeyStatus(status || {
-          groq: { isValid: false, lastValidated: null },
-          openai: { isValid: false, lastValidated: null },
-          anthropic: { isValid: false, lastValidated: null }
+        const defaultStatus = { isSet: false, isValid: false, lastValidated: null };
+        setKeyStatus({
+          groq: statuses?.groq || { ...defaultStatus },
+          openai: statuses?.openai || { ...defaultStatus },
+          anthropic: statuses?.anthropic || { ...defaultStatus }
         });
         
         setUsageStats(usage || {
@@ -75,10 +73,14 @@ const APIKeyManager = () => {
       [activeProvider]: value
     }));
     
-    // Reset validation status when key changes
+    // Reset validation status when key changes, but preserve isSet
     setKeyStatus(prev => ({
       ...prev,
-      [activeProvider]: { isValid: false, lastValidated: null }
+      [activeProvider]: {
+        ...prev[activeProvider], // Keep previous status (like isSet)
+        isValid: false,          // Only reset validation part
+        lastValidated: null
+      }
     }));
     
     setError(null);
@@ -99,10 +101,14 @@ const APIKeyManager = () => {
       
       await agentService.saveApiKey(activeProvider, apiKeys[activeProvider]);
       
+      const currentKey = apiKeys[activeProvider]; // Get key before clearing
       setSuccess(`${formatProviderName(activeProvider)} API key saved successfully.`);
       
-      // Validate the key after saving
-      handleValidateKey();
+      // Clear input field after successful save
+      setApiKeys(prev => ({ ...prev, [activeProvider]: '' }));
+
+      // Validate the key after saving (which will update isSet and isValid in keyStatus)
+      await handleValidateKey(currentKey); // Pass the saved key for validation
     } catch (err) {
       console.error('Error saving API key:', err);
       setError(`Failed to save ${formatProviderName(activeProvider)} API key. Please try again.`);
@@ -125,11 +131,15 @@ const APIKeyManager = () => {
       
       const result = await agentService.validateApiKey(activeProvider, apiKeys[activeProvider]);
       
+      // handleValidateKey should only update isValid and lastValidated.
+      // isSet is updated by save/delete or initial load.
+      // The result from validateApiKey service includes { isValid, message }
       setKeyStatus(prev => ({
         ...prev,
         [activeProvider]: {
+          ...prev[activeProvider], // Keep isSet
           isValid: result.isValid,
-          lastValidated: new Date().toISOString()
+          lastValidated: new Date().toISOString(),
         }
       }));
       
@@ -142,9 +152,11 @@ const APIKeyManager = () => {
       console.error('Error validating API key:', err);
       setError(`Failed to validate ${formatProviderName(activeProvider)} API key. Please try again.`);
       
+      // If validation fails, only isValid and lastValidated are updated. isSet remains from load/save.
       setKeyStatus(prev => ({
         ...prev,
         [activeProvider]: {
+          ...prev[activeProvider], // Keep isSet
           isValid: false,
           lastValidated: new Date().toISOString()
         }
@@ -168,9 +180,10 @@ const APIKeyManager = () => {
         [activeProvider]: ''
       }));
       
+      // After deleting, the key is no longer set nor valid.
       setKeyStatus(prev => ({
         ...prev,
-        [activeProvider]: { isValid: false, lastValidated: null }
+        [activeProvider]: { isSet: false, isValid: false, lastValidated: null }
       }));
       
       setSuccess(`${formatProviderName(activeProvider)} API key removed successfully.`);
@@ -320,8 +333,10 @@ const APIKeyManager = () => {
         <h4>Key Status</h4>
         <div className="status-item">
           <span className="status-label">Status:</span>
-          <span className={`status-value ${getStatusClass(keyStatus[activeProvider].isValid)}`}>
-            {keyStatus[activeProvider].isValid ? 'Valid' : 'Invalid or Not Validated'}
+          <span className={`status-value ${getStatusClass(keyStatus[activeProvider].isValid && keyStatus[activeProvider].isSet)}`}>
+            {keyStatus[activeProvider].isSet
+              ? (keyStatus[activeProvider].isValid ? 'Valid' : 'Set (Validation Failed or Pending)')
+              : 'Not Set'}
           </span>
         </div>
         <div className="status-item">
