@@ -9,8 +9,14 @@ const path = require('path');
 const crypto = require('crypto');
 
 class LLMService {
-  constructor(apiKey) {
-    this.apiKey = apiKey || process.env.GROQ_API_KEY;
+  constructor() {
+    // Per Carewurx Master Prompt rule 0-2, GROQ_API_KEY must come from process.env
+    this.apiKey = process.env.GROQ_API_KEY;
+    if (!this.apiKey) {
+      console.error("FATAL: GROQ_API_KEY environment variable is not set.");
+      // Optionally, throw an error or handle this case more gracefully
+      // For now, the service will likely fail when trying to make API calls without a key.
+    }
     this.model = 'llama3-70b-8192';
     
     // Initialize the Groq client
