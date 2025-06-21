@@ -436,51 +436,105 @@ class EnhancedScheduler {
    * @param {string} endTime - The end time of the schedule
    * @returns {boolean} Whether the caregiver is available
    */
-  isCaregiverAvailable(availability, date, startTime, endTime) {
+  isCaregiverAvailable(availabilityData, requestedDateStr, requestedStartTimeStr, requestedEndTimeStr) {
     try {
-      // Check if all required parameters are provided
-      if (!availability || !date || !startTime || !endTime) {
+      if (!availabilityData || !requestedDateStr || !requestedStartTimeStr || !requestedEndTimeStr) {
         console.warn('Missing required parameters for availability check');
         return false;
       }
-      
-      // Check if availability is an array
-      if (!Array.isArray(availability)) {
-        console.warn('Availability is not an array');
+
+      const requestedDate = new Date(requestedDateStr + 'T00:00:00'); // Ensure date is parsed correctly, ideally in UTC or a consistent timezone
+      const requestedStartMinutes = this.timeToMinutes(requestedStartTimeStr);
+      const requestedEndMinutes = this.timeToMinutes(requestedEndTimeStr);
+
+      if (requestedStartMinutes === null || requestedEndMinutes === null) {
+        console.warn('Invalid requested start or end time format');
         return false;
       }
+
+      // 1. Check time_off (highest precedence)
+      if (availabilityData.time_off && Array.isArray(availabilityData.time_off)) {
+        for (const pto of availabilityData.time_off) {
+          const ptoStart = new Date(pto.start_datetime);
+          const ptoEnd = new Date(pto.end_datetime);
+          // Simple date check for now; could be more granular if time_off includes times
+          if (requestedDate >= new Date(ptoStart.toDateString()) && requestedDate <= new Date(ptoEnd.toDateString())) {
+             // More precise check if requested slot overlaps with PTO period
+            const scheduleStartDateTime = new Date(`${requestedDateStr}T${requestedStartTimeStr}`);
+            const scheduleEndDateTime = new Date(`${requestedDateStr}T${requestedEndTimeStr}`);
+            if (scheduleStartDateTime < ptoEnd && scheduleEndDateTime > ptoStart) {
+                console.log(`Caregiver unavailable due to time off: ${pto.reason}`);
+                return false;
+            }
+          }
+        }
+      }
       
-      // Get day of week name
-      const dayOfWeek = new Date(date).getDay();
+      const dayOfWeek = requestedDate.getDay(); // 0 for Sunday, 1 for Monday, etc.
       const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayOfWeek];
-      
-      // Find availability for this day
-      const dayAvailability = availability.find(slot => 
-        slot && slot.day && slot.day.toLowerCase() === dayName.toLowerCase()
-      );
-      
-      if (!dayAvailability) {
-        return false;
+
+      // 2. Check specific_slots
+      if (availabilityData.specific_slots && Array.isArray(availabilityData.specific_slots)) {
+        for (const slot of availabilityData.specific_slots) {
+          if (slot && slot.day && slot.day.toLowerCase() === dayName.toLowerCase()) {
+            const slotStartMinutes = this.timeToMinutes(slot.start);
+            const slotEndMinutes = this.timeToMinutes(slot.end);
+            if (slotStartMinutes !== null && slotEndMinutes !== null) {
+              if (requestedStartMinutes >= slotStartMinutes && requestedEndMinutes <= slotEndMinutes) {
+                return true; // Available due to a specific slot
+              }
+            }
+          }
+        }
       }
-      
-      // Check for required time properties
-      if (!dayAvailability.start || !dayAvailability.end) {
-        return false;
+
+      // 3. Check general_rules
+      if (availabilityData.general_rules && Array.isArray(availabilityData.general_rules)) {
+        for (const rule of availabilityData.general_rules) {
+          if (!rule || rule.type !== 'weekly_recurring') continue; // Only handle weekly_recurring for now
+
+          // Check effective dates
+          if (rule.effective_start_date && new Date(rule.effective_start_date) > requestedDate) continue;
+          if (rule.effective_end_date && new Date(rule.effective_end_date) < requestedDate) continue;
+
+          const ruleAppliesToDay = rule.days_of_week && rule.days_of_week.some(d => d.toLowerCase() === dayName.toLowerCase());
+          if (!ruleAppliesToDay) continue;
+
+          const ruleStartMinutes = this.timeToMinutes(rule.start_time);
+          const ruleEndMinutes = this.timeToMinutes(rule.end_time);
+
+          if (ruleStartMinutes === null || ruleEndMinutes === null) continue;
+
+          if (requestedStartMinutes >= ruleStartMinutes && requestedEndMinutes <= ruleEndMinutes) {
+            // Now check exceptions for this rule
+            let isException = false;
+            if (rule.exceptions && Array.isArray(rule.exceptions)) {
+              for (const ex of rule.exceptions) {
+                if (ex.date && new Date(ex.date).toDateString() === requestedDate.toDateString()) {
+                  if (ex.start_time && ex.end_time) { // Specific time exception
+                    const exStartMinutes = this.timeToMinutes(ex.start_time);
+                    const exEndMinutes = this.timeToMinutes(ex.end_time);
+                    if (exStartMinutes !== null && exEndMinutes !== null) {
+                      // Check for overlap: (ReqStart < ExEnd) and (ReqEnd > ExStart)
+                      if (requestedStartMinutes < exEndMinutes && requestedEndMinutes > exStartMinutes) {
+                        isException = true;
+                        break;
+                      }
+                    }
+                  } else { // Full day exception
+                    isException = true;
+                    break;
+                  }
+                }
+              }
+            }
+            if (!isException) {
+              return true; // Available due to a general rule
+            }
+          }
+        }
       }
-      
-      // Convert to minutes for comparison
-      const startMinutes = this.timeToMinutes(startTime);
-      const endMinutes = this.timeToMinutes(endTime);
-      const availableStartMinutes = this.timeToMinutes(dayAvailability.start);
-      const availableEndMinutes = this.timeToMinutes(dayAvailability.end);
-      
-      // Check if any conversion failed
-      if (startMinutes === null || endMinutes === null || 
-          availableStartMinutes === null || availableEndMinutes === null) {
-        return false;
-      }
-      
-      return startMinutes >= availableStartMinutes && endMinutes <= availableEndMinutes;
+      return false; // Not available by any rule
     } catch (error) {
       console.error('Error checking caregiver availability:', error);
       return false; // Default to unavailable on error

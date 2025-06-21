@@ -241,13 +241,55 @@ class NotificationService {
    */
   async createOpportunityNotification(opportunity) {
     let title, message;
+    let notificationDataPayload = {
+        opportunityId: opportunity.id,
+        opportunityType: opportunity.type,
+        timestamp: new Date().toISOString(),
+        priority: opportunity.priority || 'medium',
+    };
     
     switch (opportunity.type) {
-      case 'caregiver_assignment':
-        title = `Caregiver Match Found for ${opportunity.client_name}`;
-        message = `Found ${opportunity.candidates.length} potential caregivers for ${opportunity.client_name}'s schedule on ${opportunity.date}.`;
+      case 'caregiver_assignment_to_schedule': // Updated from 'caregiver_assignment'
+        title = `Caregiver Match for ${opportunity.client_name}`;
+        message = `Found ${opportunity.candidates.length} potential caregiver(s) for ${opportunity.client_name}'s shift on ${opportunity.date} (${opportunity.time_range}). Top match: ${opportunity.candidates[0]?.caregiver_name || 'N/A'}.`;
+        notificationDataPayload.schedule_id = opportunity.schedule_id;
+        notificationDataPayload.client_id = opportunity.client_id;
+        notificationDataPayload.client_name = opportunity.client_name;
+        notificationDataPayload.date = opportunity.date;
+        notificationDataPayload.candidates = opportunity.candidates;
         break;
-        
+
+      case 'client_assignment_suggestion':
+        title = `Client Suggestion for ${opportunity.caregiver_name}`;
+        const clientNames = opportunity.potential_clients.map(c => c.client_name).join(', ');
+        message = `${opportunity.caregiver_name} is generally available and could take on new clients like ${clientNames}.`;
+        notificationDataPayload.caregiver_id = opportunity.caregiver_id;
+        notificationDataPayload.caregiver_name = opportunity.caregiver_name;
+        notificationDataPayload.potential_clients = opportunity.potential_clients;
+        notificationDataPayload.availability_summary = opportunity.availability_summary;
+        break;
+
+      case 'increase_caregiver_hours':
+        title = `Capacity Alert: ${opportunity.caregiver_name}`;
+        message = `${opportunity.caregiver_name} has capacity for ~${opportunity.hour_deficit} more hours next week. ${opportunity.potential_matches?.length || 0} potential shifts identified.`;
+        notificationDataPayload.caregiver_id = opportunity.caregiver_id;
+        notificationDataPayload.caregiver_name = opportunity.caregiver_name;
+        notificationDataPayload.current_hours_next_week = opportunity.current_hours_next_week;
+        notificationDataPayload.target_hours = opportunity.target_hours;
+        notificationDataPayload.hour_deficit = opportunity.hour_deficit;
+        notificationDataPayload.potential_matches = opportunity.potential_matches;
+        break;
+
+      case 'fill_gap_efficiency':
+        title = `Efficiency: Fill Gap for ${opportunity.caregiver_name}`;
+        message = `Suggest filling a ${opportunity.gap_duration_minutes} min gap for ${opportunity.caregiver_name} on ${opportunity.date || opportunity.summary.match(/on (\d{4}-\d{2}-\d{2})/)?.[1]} with a nearby shift.`;
+        notificationDataPayload.caregiver_id = opportunity.caregiver_id;
+        notificationDataPayload.caregiver_name = opportunity.caregiver_name;
+        notificationDataPayload.existing_schedule_id = opportunity.existing_schedule_id;
+        notificationDataPayload.potential_schedule_to_fill_id = opportunity.potential_schedule_to_fill_id;
+        notificationDataPayload.gap_duration_minutes = opportunity.gap_duration_minutes;
+        break;
+
       case 'schedule_optimization':
         title = 'Schedule Optimization Opportunity';
         message = `Potential optimization found for schedules on ${opportunity.date}.`;
@@ -255,12 +297,13 @@ class NotificationService {
         
       case 'conflict_resolution':
         title = 'Schedule Conflict Detected';
-        message = `Scheduling conflict detected for ${opportunity.caregiver_name || 'a caregiver'} on ${opportunity.date}.`;
+        message = `Scheduling conflict detected for ${opportunity.caregiver_name || 'a caregiver'} on ${opportunity.date || 'upcoming date'}.`;
+        notificationDataPayload.conflict_details = opportunity.conflict_details; // Assuming this field exists
         break;
         
       default:
         title = 'New Scheduling Opportunity';
-        message = `New opportunity discovered at ${new Date().toLocaleString()}`;
+        message = opportunity.summary || `New opportunity of type '${opportunity.type}' discovered.`;
     }
     
     return await this.createNotification({
@@ -268,15 +311,7 @@ class NotificationService {
       title,
       message,
       priority: opportunity.priority || 'medium',
-      data: {
-        opportunityId: opportunity.id,
-        opportunityType: opportunity.type,
-        scheduleId: opportunity.schedule_id,
-        clientId: opportunity.client_id,
-        clientName: opportunity.client_name,
-        date: opportunity.date,
-        timestamp: new Date().toISOString()
-      }
+      data: notificationDataPayload
     });
   }
 }

@@ -104,3 +104,96 @@ If available caregivers aren't showing up for a schedule:
 1. Make sure caregivers have been created with appropriate skills
 2. Verify caregiver availability has been set up using the Availability Manager
 3. Check that the caregiver's regular schedule includes the day of week and time range needed
+
+## Caregiver Availability Data Model (Advanced)
+
+The `caregiver_availability` Firestore collection stores availability for each caregiver. The document ID is the `caregiverId`. Within each document, the `availability` field holds the structured data defining when a caregiver is available. This structure supports both specific recurring slots and general availability rules.
+
+**Structure of the `availability` field:**
+
+```json
+{
+  "specific_slots": [
+    { "day": "Monday", "start": "09:00", "end": "12:00" },
+    { "day": "Wednesday", "start": "14:00", "end": "17:00" }
+  ],
+  "general_rules": [
+    {
+      "id": "rule1_workdays",
+      "type": "weekly_recurring",
+      "days_of_week": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+      "start_time": "09:00",
+      "end_time": "17:00",
+      "effective_start_date": "2024-01-01",
+      "effective_end_date": null,
+      "time_zone": "America/New_York",
+      "exceptions": [
+        { "date": "2024-07-04", "reason": "Holiday - Full Day" },
+        { "date": "2024-08-15", "start_time": "13:00", "end_time": "17:00", "reason": "Personal Appointment" }
+      ]
+    },
+    {
+      "id": "rule2_saturday",
+      "type": "weekly_recurring",
+      "days_of_week": ["Saturday"],
+      "start_time": "10:00",
+      "end_time": "14:00",
+      "effective_start_date": "2024-01-01",
+      "effective_end_date": null
+    }
+  ],
+  "time_off": [
+    {
+      "id": "pto_summer_2024",
+      "start_datetime": "2024-07-20T00:00:00Z",
+      "end_datetime": "2024-07-28T23:59:59Z",
+      "reason": "Summer Vacation"
+    }
+  ]
+}
+```
+
+**Field Descriptions:**
+
+*   **`specific_slots`** (Array):
+    *   Defines fixed, recurring time slots for a caregiver. This is useful for caregivers with very regular, pre-defined commitments.
+    *   Each object contains:
+        *   `day`: (String) Day of the week (e.g., "Monday", "Tuesday").
+        *   `start`: (String) Start time in HH:MM format.
+        *   `end`: (String) End time in HH:MM format.
+
+*   **`general_rules`** (Array):
+    *   Defines broader blocks of availability.
+    *   Each rule object contains:
+        *   `id`: (String) A unique identifier for the rule (e.g., "workdays_std", "saturday_am").
+        *   `type`: (String) Type of rule. Currently, `"weekly_recurring"` is supported.
+        *   `days_of_week`: (Array of Strings) Days this rule applies to (e.g., `["Monday", "Friday"]`).
+        *   `start_time`: (String) General start time for these days (HH:MM).
+        *   `end_time`: (String) General end time for these days (HH:MM).
+        *   `effective_start_date`: (String - YYYY-MM-DD, Optional) Date when this rule becomes active.
+        *   `effective_end_date`: (String - YYYY-MM-DD, Optional) Date when this rule is no longer active. If `null`, the rule does not expire.
+        *   `time_zone`: (String, Optional but Recommended) IANA time zone name (e.g., "America/New_York", "Europe/London"). Helps clarify times if system spans multiple zones.
+        *   `exceptions`: (Array of Objects, Optional) Specific dates or times when the caregiver is *not* available, overriding this general rule.
+            *   Each exception object:
+                *   `date`: (String - YYYY-MM-DD) The date of the exception.
+                *   `start_time`: (String - HH:MM, Optional) If the exception is for part of the day.
+                *   `end_time`: (String - HH:MM, Optional) If the exception is for part of the day.
+                *   `reason`: (String, Optional) Reason for the exception.
+
+*   **`time_off`** (Array):
+    *   Defines explicit periods when the caregiver is completely unavailable (e.g., vacation, sick leave). This takes precedence over any other availability rules.
+    *   Each object contains:
+        *   `id`: (String) A unique identifier for the time off period.
+        *   `start_datetime`: (String - ISO 8601 Timestamp, e.g., "2024-12-20T00:00:00Z") The start date and time of the time off.
+        *   `end_datetime`: (String - ISO 8601 Timestamp, e.g., "2024-12-28T23:59:59Z") The end date and time of the time off.
+        *   `reason`: (String, Optional) Reason for the time off.
+
+**Precedence for Availability Checks:**
+
+When determining if a caregiver is available for a specific date and time, the system checks in the following order:
+1.  **Time Off (`time_off`):** If the requested time falls within a `time_off` period, the caregiver is UNAVAILABLE.
+2.  **Specific Slots (`specific_slots`):** If the requested time matches a defined specific slot, the caregiver is AVAILABLE.
+3.  **General Rules (`general_rules`):** If the requested time falls within an active general rule (and is not overridden by one of its exceptions), the caregiver is AVAILABLE.
+4.  If none of the above conditions make the caregiver available, they are considered UNAVAILABLE for the requested time.
+
+This model allows for flexible definition of caregiver availability, accommodating both highly structured schedules and more general availability patterns.

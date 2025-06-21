@@ -10,6 +10,8 @@ const ContextBuilder = require('../utils/context-builder');
 const ResponseParser = require('../utils/response-parser');
 const fs = require('fs');
 const path = require('path');
+const enhancedScheduler = require('../../services/enhanced-scheduler');
+const { firebaseService } = require('../../services/firebase');
 
 class AgentManager {
   constructor() {
@@ -24,6 +26,9 @@ class AgentManager {
     // Circular integration tracking (to prevent infinite loops)
     this.circularReferences = new Map();
     this.maxCircularDepth = 3;
+
+    // For tracking agent-initiated long-running tasks like optimization
+    this.activeOptimizationTasks = new Map();
   }
 
   /**
@@ -283,6 +288,10 @@ class AgentManager {
           case 'opportunity_action':
             await this.handleOpportunityAction(userId, action.parameters);
             break;
+
+          case 'initiate_schedule_optimization_task':
+            await this.handleInitiateScheduleOptimizationTask(userId, action.parameters);
+            break;
             
           default:
             console.log(`Unknown action type: ${action.type}`);
@@ -294,6 +303,54 @@ class AgentManager {
   }
 
   /**
+   * Handle initiation of a schedule optimization task.
+   * This is a conceptual handler; actual optimization logic is external.
+   * @param {string} userId - The user's ID
+   * @param {Object} parameters - The action parameters from the LLM
+   * @returns {Promise<Object>} A confirmation or status object
+   */
+  async handleInitiateScheduleOptimizationTask(userId, parameters) {
+    console.log(`Initiating schedule optimization task for user ${userId}:`, parameters);
+
+    const { task_id, optimization_criteria, scope } = parameters;
+
+    if (!task_id || !optimization_criteria || !scope) {
+      throw new Error('Missing required parameters (task_id, optimization_criteria, scope) for initiating optimization task.');
+    }
+
+    if (this.activeOptimizationTasks.has(task_id)) {
+      // This could mean the LLM is trying to re-initiate an existing task or task_id collision
+      console.warn(`Optimization task ${task_id} already exists. Possible re-initiation.`);
+      // Depending on desired behavior, could either throw error, or update existing, or ignore.
+      // For now, let's allow re-initiation to update params.
+    }
+
+    const taskDetails = {
+      ...parameters,
+      userId,
+      status: 'pending_analysis', // Initial status
+      startTime: new Date().toISOString(),
+      conversationSnapshot: this.getConversationHistory(userId, true).slice(-5) // Snapshot of recent conversation
+    };
+
+    this.activeOptimizationTasks.set(task_id, taskDetails);
+
+    // In a real scenario, this might trigger an async background process.
+    // For now, it just acknowledges. The agent's response should reflect this.
+    const confirmationMessage = `Okay, I've started the schedule optimization task (ID: ${task_id}) for ${scope.date_range_start} to ${scope.date_range_end} focusing on ${optimization_criteria.join(', ')}. I'll analyze this and let you know.`;
+
+    console.log(`Optimization task ${task_id} stored. Current active tasks: ${this.activeOptimizationTasks.size}`);
+
+    // This handler's return value might be used by the agent to form its next response.
+    return {
+      success: true,
+      task_id,
+      status: 'initiated',
+      message: confirmationMessage // Agent can use this message
+    };
+  }
+
+  /**
    * Handle a schedule creation action
    * @param {string} userId - The user's ID
    * @param {Object} parameters - The action parameters
@@ -302,8 +359,73 @@ class AgentManager {
   async handleScheduleCreate(userId, parameters) {
     console.log(`Creating schedule for user ${userId}:`, parameters);
     
-    // This would connect to the schedule service
-    // For now, just log the action
+    try {
+      // Basic validation
+      if (!parameters.client_id || !parameters.date || !parameters.start_time || !parameters.end_time) {
+        console.error('Missing required parameters for schedule creation:', parameters);
+        throw new Error('Client ID, date, start time, and end time are required to create a schedule.');
+      }
+
+      let scheduleData = {
+        client_id: parameters.client_id,
+        date: parameters.date,
+        start_time: parameters.start_time,
+        end_time: parameters.end_time,
+        notes: parameters.notes || '',
+        status: 'unassigned', // Default status
+        created_by_agent: true,
+        user_id_initiator: userId
+      };
+
+      if (!parameters.client_name || !parameters.client_location || !parameters.required_skills) {
+        const client = await firebaseService.getClient(parameters.client_id);
+        if (client) {
+          scheduleData.client_name = client.name || parameters.client_name;
+          scheduleData.client_location = client.location || parameters.client_location;
+          scheduleData.required_skills = client.required_skills || parameters.required_skills || [];
+        } else {
+          throw new Error(`Client with ID ${parameters.client_id} not found.`);
+        }
+      } else {
+        scheduleData.client_name = parameters.client_name;
+        scheduleData.client_location = parameters.client_location;
+        scheduleData.required_skills = parameters.required_skills;
+      }
+
+      const createdSchedule = await enhancedScheduler.createSchedule(scheduleData);
+      console.log(`Schedule created successfully by agent for user ${userId}:`, createdSchedule.id);
+      return createdSchedule;
+
+    } catch (error) {
+      console.error(`Error in handleScheduleCreate for user ${userId}:`, error.message);
+      throw error;
+    }
+    try {
+      if (!parameters.schedule_id || !parameters.updates) {
+        console.error('Missing schedule_id or updates for schedule update:', parameters);
+        throw new Error('Schedule ID and updates object are required to update a schedule.');
+      }
+
+      const { schedule_id, updates } = parameters;
+
+      if (updates.date && !/^\d{4}-\d{2}-\d{2}$/.test(updates.date)) {
+        throw new Error('Invalid date format for schedule update. Use YYYY-MM-DD.');
+      }
+      if (updates.start_time && !/^\d{2}:\d{2}$/.test(updates.start_time)) {
+        throw new Error('Invalid start time format for schedule update. Use HH:MM.');
+      }
+      if (updates.end_time && !/^\d{2}:\d{2}$/.test(updates.end_time)) {
+        throw new Error('Invalid end time format for schedule update. Use HH:MM.');
+      }
+
+      const updatedSchedule = await enhancedScheduler.updateSchedule(schedule_id, updates);
+      console.log(`Schedule ${schedule_id} updated successfully by agent for user ${userId}:`, updatedSchedule);
+      return updatedSchedule;
+
+    } catch (error) {
+      console.error(`Error in handleScheduleUpdate for user ${userId}:`, error.message);
+      throw error;
+    }
   }
 
   /**
@@ -328,8 +450,27 @@ class AgentManager {
   async handleCaregiverAssign(userId, parameters) {
     console.log(`Assigning caregiver for user ${userId}:`, parameters);
     
-    // This would connect to the caregiver assignment service
-    // For now, just log the action
+    try {
+      if (!parameters.schedule_id || !parameters.caregiver_id) {
+        console.error('Missing schedule_id or caregiver_id for assignment:', parameters);
+        throw new Error('Schedule ID and Caregiver ID are required to assign a caregiver.');
+      }
+
+      const { schedule_id, caregiver_id } = parameters;
+      const assignmentResult = await enhancedScheduler.assignCaregiverToSchedule(schedule_id, caregiver_id);
+
+      if (assignmentResult.success) {
+        console.log(`Caregiver ${caregiver_id} assigned to schedule ${schedule_id} successfully by agent for user ${userId}.`);
+      } else {
+        console.error(`Failed to assign caregiver ${caregiver_id} to schedule ${schedule_id} by agent for user ${userId}.`);
+        throw new Error(assignmentResult.message || `Failed to assign caregiver to schedule ${schedule_id}.`);
+      }
+      return assignmentResult.schedule;
+
+    } catch (error) {
+      console.error(`Error in handleCaregiverAssign for user ${userId}:`, error.message);
+      throw error;
+    }
   }
 
   /**
@@ -404,32 +545,26 @@ class AgentManager {
    * Part of the agentic capability implementation
    * @returns {Promise<Array>} The discovered opportunities
    */
-  async scanForOpportunities() {
-    console.log('Scanning for scheduling opportunities...');
-    
+  async scanForOpportunities(scanOptions = {}) {
+    console.log('Scanning for scheduling opportunities...', scanOptions);
+    const opportunities = [];
+    const defaultWeeklyTargetHours = 30; // Default target hours for caregivers
+
     try {
-      // Get relevant data needed for opportunity scanning
-      const firebaseService = require('../../services/firebase').firebaseService;
-      const enhancedScheduler = require('../../services/enhanced-scheduler');
-      
-      // Get all schedules that are unassigned
+      // 1. Find caregivers for unassigned schedules (existing logic)
+      console.log('Phase 1: Scanning for caregivers for unassigned schedules...');
       const unassignedSchedules = await firebaseService.db.collection('schedules')
         .where('status', '==', 'unassigned')
+        // Potentially add date range filter from scanOptions if provided
         .get()
         .then(snapshot => snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      
-      // Process each unassigned schedule to find potential matches
-      const opportunities = [];
-      
+
       for (const schedule of unassignedSchedules) {
-        // Find potential caregivers for this schedule
         const availableCaregivers = await enhancedScheduler.findAvailableCaregivers(schedule.id);
-        
         if (availableCaregivers.length > 0) {
-          // Create an opportunity for this match
           const opportunity = {
-            id: `opp-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-            type: 'caregiver_assignment',
+            id: `opp-cgassign-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            type: 'caregiver_assignment_to_schedule', // More specific type
             schedule_id: schedule.id,
             client_id: schedule.client_id,
             client_name: schedule.client_name,
@@ -439,26 +574,164 @@ class AgentManager {
               caregiver_id: c.caregiver.id,
               caregiver_name: c.caregiver.name,
               score: c.score,
-              distance: c.distance || 'unknown'
+              distance: c.distance || 'unknown',
             })),
             created_at: new Date().toISOString(),
             status: 'pending',
-            priority: availableCaregivers[0].score > 85 ? 'high' : 'medium'
+            priority: availableCaregivers[0].score > 85 ? 'high' : 'medium',
+            summary: `Potential caregivers found for ${schedule.client_name}'s unassigned shift on ${schedule.date}.`
           };
-          
           opportunities.push(opportunity);
-          
-          // Save the opportunity to the database
           await firebaseService.addDocument('opportunities', opportunity);
         }
       }
+      console.log(`Phase 1: Found ${opportunities.length} caregiver assignment opportunities.`);
+
+      // 2. Find clients for generally available caregivers
+      console.log('Phase 2: Scanning for clients for generally available caregivers...');
+      const allCaregivers = await firebaseService.getAllCaregivers();
+      const allClients = await firebaseService.getAllClients(); // Assuming clients have a way to mark active need
+
+      for (const caregiver of allCaregivers) {
+        const availability = await firebaseService.getCaregiverAvailability(caregiver.id);
+        if (availability && availability.general_rules && availability.general_rules.length > 0) {
+          // This caregiver has general availability. Let's find potential clients.
+          // This logic would be more complex: check skills, location preferences, etc.
+          // For now, a simplified version: suggest clients who have no upcoming assigned schedules.
+
+          const clientsWithPotentialNeed = [];
+          for (const client of allClients) {
+            // Example: Client needs care if they have no assigned schedules in the next 7 days
+            // This is a placeholder for a more robust "client needs care" indicator.
+            const upcomingSchedules = await firebaseService.getSchedulesByClientIdInDateRange(client.id,
+                new Date().toISOString().split('T')[0],
+                new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+            );
+            const hasAssignedUpcoming = upcomingSchedules.some(s => s.status === 'assigned');
+
+            if (!hasAssignedUpcoming) {
+                 // Basic match: check if caregiver has any skill the client might need (very simplified)
+                const clientSkills = client.required_skills || [];
+                const caregiverSkills = caregiver.skills || [];
+                const skillsMatch = clientSkills.length === 0 || clientSkills.some(skill => caregiverSkills.includes(skill));
+
+                if (skillsMatch) {
+                    // Further check: is caregiver generally available on days client might need?
+                    // This requires a more defined client need profile (e.g. preferred days)
+                    // For now, we'll assume a general match is an opportunity.
+                    clientsWithPotentialNeed.push({
+                        client_id: client.id,
+                        client_name: client.name,
+                        // Add more client details if useful for the opportunity
+                    });
+                }
+            }
+          }
+
+          if (clientsWithPotentialNeed.length > 0) {
+            const opportunity = {
+              id: `opp-clientmatch-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              type: 'client_assignment_suggestion',
+              caregiver_id: caregiver.id,
+              caregiver_name: caregiver.name,
+              potential_clients: clientsWithPotentialNeed.slice(0,3), // Suggest a few
+              availability_summary: `Generally available: ${availability.general_rules.map(r => r.days_of_week.join(', ') + ' ' + r.start_time + '-' + r.end_time).join('; ')}`,
+              created_at: new Date().toISOString(),
+              status: 'pending',
+              priority: 'medium',
+              summary: `${caregiver.name} is generally available and could potentially take on new clients like ${clientsWithPotentialNeed.map(c => c.client_name).join(', ')}.`
+            };
+            opportunities.push(opportunity);
+            await firebaseService.addDocument('opportunities', opportunity);
+          }
+        }
+      }
+      console.log(`Phase 2: Found ${opportunities.filter(o=>o.type === 'client_assignment_suggestion').length} client assignment suggestion opportunities.`);
+
+
+      // 3. Identify caregivers who can take more hours
+      console.log('Phase 3: Scanning for caregivers who can take more hours...');
+      const today = new Date();
+      const nextWeekStart = new Date(today);
+      nextWeekStart.setDate(today.getDate() + ( (1 + 7 - today.getDay()) % 7 ) ); // Next Monday
+      const nextWeekEnd = new Date(nextWeekStart);
+      nextWeekEnd.setDate(nextWeekStart.getDate() + 6); // Next Sunday
+
+      for (const caregiver of allCaregivers) {
+        const caregiverSchedulesNextWeek = await firebaseService.getSchedulesByCaregiverIdInDateRange(
+          caregiver.id,
+          nextWeekStart.toISOString().split('T')[0],
+          nextWeekEnd.toISOString().split('T')[0]
+        );
+
+        let scheduledHoursNextWeek = 0;
+        caregiverSchedulesNextWeek.forEach(s => {
+          const startMinutes = enhancedScheduler.timeToMinutes(s.start_time);
+          const endMinutes = enhancedScheduler.timeToMinutes(s.end_time);
+          if (startMinutes !== null && endMinutes !== null && endMinutes > startMinutes) {
+            scheduledHoursNextWeek += (endMinutes - startMinutes) / 60;
+          }
+        });
+
+        const targetHours = caregiver.target_weekly_hours || defaultWeeklyTargetHours;
+        const hourDeficit = targetHours - scheduledHoursNextWeek;
+
+        if (hourDeficit > 4) { // Significant deficit, e.g., more than 4 hours
+          const availability = await firebaseService.getCaregiverAvailability(caregiver.id);
+          if (availability && ( (availability.general_rules && availability.general_rules.length > 0) || (availability.specific_slots && availability.specific_slots.length > 0) ) ) {
+            // Find some unassigned schedules this caregiver might fit
+            const potentialMatches = [];
+            for (const unassignedSch of unassignedSchedules) {
+                // Check if caregiver is available for this unassigned schedule
+                 const isActuallyAvailable = enhancedScheduler.isCaregiverAvailable(availability, unassignedSch.date, unassignedSch.start_time, unassignedSch.end_time);
+                 if(isActuallyAvailable) {
+                    // Check basic skill match
+                    const clientDetails = await firebaseService.getClient(unassignedSch.client_id);
+                    const clientSkills = clientDetails ? (clientDetails.required_skills || []) : [];
+                    const caregiverSkills = caregiver.skills || [];
+                    const skillsMatch = clientSkills.length === 0 || clientSkills.some(skill => caregiverSkills.includes(skill));
+                    if(skillsMatch) {
+                        potentialMatches.push({
+                            schedule_id: unassignedSch.id,
+                            client_name: unassignedSch.client_name,
+                            date: unassignedSch.date,
+                            time_range: `${unassignedSch.start_time} - ${unassignedSch.end_time}`
+                        });
+                        if(potentialMatches.length >= 2) break; // Suggest a couple
+                    }
+                 }
+            }
+
+            const opportunity = {
+              id: `opp-morehours-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              type: 'increase_caregiver_hours',
+              caregiver_id: caregiver.id,
+              caregiver_name: caregiver.name,
+              current_hours_next_week: scheduledHoursNextWeek.toFixed(1),
+              target_hours: targetHours,
+              hour_deficit: hourDeficit.toFixed(1),
+              potential_matches: potentialMatches, // Unassigned shifts they might cover
+              created_at: new Date().toISOString(),
+              status: 'pending',
+              priority: 'medium',
+              summary: `${caregiver.name} has capacity for ~${hourDeficit.toFixed(0)} more hours next week. Potential matches: ${potentialMatches.map(p=>p.client_name).join(', ')}.`
+            };
+            opportunities.push(opportunity);
+            await firebaseService.addDocument('opportunities', opportunity);
+          }
+        }
+      }
+      console.log(`Phase 3: Found ${opportunities.filter(o=>o.type === 'increase_caregiver_hours').length} 'increase hours' opportunities.`);
       
-      // Get scheduling efficiency opportunities
-      // These would be schedules that could be optimized
-      const efficiencyOpportunities = await this.identifyEfficiencyOpportunities();
-      opportunities.push(...efficiencyOpportunities);
-      
+      // 4. Placeholder for Efficiency Opportunities (can be expanded later)
+      console.log('Phase 4: Identifying efficiency opportunities (basic)...');
+      const efficiencyOpportunities = await this.identifyEfficiencyOpportunities(unassignedSchedules, allCaregivers, allClients);
+      opportunities.push(...efficiencyOpportunities); // Will also save to DB inside the method
+      console.log(`Phase 4: Found ${efficiencyOpportunities.length} efficiency opportunities.`);
+
+      console.log(`Total opportunities found: ${opportunities.length}`);
       return opportunities;
+
     } catch (error) {
       console.error('Error scanning for opportunities:', error);
       throw error;
@@ -606,13 +879,76 @@ class AgentManager {
 
   /**
    * Identify scheduling efficiency opportunities
+   * @param {Array} unassignedSchedules - List of unassigned schedules
+   * @param {Array} allCaregivers - List of all caregivers
+   * @param {Array} allClients - List of all clients
    * @returns {Promise<Array>} The efficiency opportunities
    */
-  async identifyEfficiencyOpportunities() {
-    // This would analyze the schedules and find opportunities to improve efficiency
-    // For example, consolidating multiple visits in the same area
-    // For now, return an empty array as a placeholder
-    return [];
+  async identifyEfficiencyOpportunities(unassignedSchedules, allCaregivers, allClients) {
+    const efficiencyOpportunities = [];
+    console.log('Identifying basic efficiency opportunities...');
+
+    // Example: Suggest filling small gaps for already scheduled caregivers if an unassigned shift is nearby
+    // This is a very simplified example. Real efficiency logic would be much more complex.
+    const assignedSchedulesToday = await firebaseService.db.collection('schedules')
+        .where('status', '==', 'assigned')
+        .where('date', '==', new Date().toISOString().split('T')[0])
+        .get()
+        .then(snapshot => snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
+    for (const assignedSchedule of assignedSchedulesToday) {
+        const caregiverId = assignedSchedule.caregiver_id;
+        const caregiver = allCaregivers.find(c => c.id === caregiverId);
+        if (!caregiver) continue;
+
+        // Look for an unassigned schedule nearby (time and location)
+        for (const unassigned of unassignedSchedules) {
+            if (unassigned.date === assignedSchedule.date) { // Same day
+                const assignedEndMinutes = enhancedScheduler.timeToMinutes(assignedSchedule.end_time);
+                const unassignedStartMinutes = enhancedScheduler.timeToMinutes(unassigned.start_time);
+
+                if (assignedEndMinutes !== null && unassignedStartMinutes !== null) {
+                    const gapDuration = unassignedStartMinutes - assignedEndMinutes;
+                    // If gap is small (e.g., 30-90 mins) and locations are close (placeholder for actual distance check)
+                    if (gapDuration > 15 && gapDuration <= 90) {
+                        const clientOfAssigned = allClients.find(c => c.id === assignedSchedule.client_id);
+                        const clientOfUnassigned = allClients.find(c => c.id === unassigned.client_id);
+
+                        // Placeholder for location proximity check
+                        const areClose = clientOfAssigned && clientOfUnassigned &&
+                                         (clientOfAssigned.location && clientOfUnassigned.location ?
+                                          enhancedScheduler.areLocationsClose(clientOfAssigned.location, clientOfUnassigned.location) : true);
+
+                        if (areClose) {
+                             const availability = await firebaseService.getCaregiverAvailability(caregiverId);
+                             const isActuallyAvailable = enhancedScheduler.isCaregiverAvailable(availability, unassigned.date, unassigned.start_time, unassigned.end_time);
+
+                             if(isActuallyAvailable) {
+                                const opportunity = {
+                                    id: `opp-gapfill-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                                    type: 'fill_gap_efficiency',
+                                    caregiver_id: caregiverId,
+                                    caregiver_name: caregiver.name,
+                                    existing_schedule_id: assignedSchedule.id,
+                                    potential_schedule_to_fill_id: unassigned.id,
+                                    gap_duration_minutes: gapDuration,
+                                    summary: `Caregiver ${caregiver.name} has a ${gapDuration} min gap on ${assignedSchedule.date} before potentially taking ${unassigned.client_name}'s nearby shift.`,
+                                    created_at: new Date().toISOString(),
+                                    status: 'pending',
+                                    priority: 'low'
+                                };
+                                efficiencyOpportunities.push(opportunity);
+                                await firebaseService.addDocument('opportunities', opportunity);
+                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    console.log(`Identified ${efficiencyOpportunities.length} basic efficiency opportunities.`);
+    return efficiencyOpportunities;
   }
 
   /**
