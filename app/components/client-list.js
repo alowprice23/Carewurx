@@ -28,9 +28,11 @@ class ClientList {
    */
   async fetchClients() {
     try {
-      this.clients = await window.electronAPI.getAllClients();
+      console.log('Fetching all clients via API...');
+      this.clients = await window.fetchAPI('/firebase/clients');
     } catch (error) {
-      console.error('Error fetching clients:', error);
+      console.error('Error fetching clients via API:', error);
+      this.clients = []; // Ensure clients is an array on error
     }
   }
 

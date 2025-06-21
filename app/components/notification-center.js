@@ -70,7 +70,8 @@ class NotificationCenter {
    */
   async fetchInitialNotifications() {
     try {
-      const notifications = await window.electronAPI.getNotifications({ read: false, limit: 20 });
+      console.log('Fetching initial notifications via API...');
+      const notifications = await window.fetchAPI('/notifications', { params: { read: false, limit: 20 } });
       if (notifications && notifications.length > 0) {
         this.notifications = notifications;
         this.render();
@@ -299,7 +300,8 @@ class NotificationCenter {
     
     try {
       // Get opportunity details
-      const opportunityDetails = await window.electronAPI.getOpportunityDetails(opportunityId);
+      console.log(`Fetching opportunity details for ${opportunityId} via API...`);
+      const opportunityDetails = await window.fetchAPI(`/agent/opportunityDetails/${opportunityId}`);
       
       // Publish an event to show opportunity details in the opportunity viewer
       await realTimeUpdatesService.publish('system', {
@@ -326,7 +328,8 @@ class NotificationCenter {
     
     try {
       // Apply the opportunity
-      const result = await window.electronAPI.applyOpportunity(opportunityId);
+      console.log(`Applying for opportunity ${opportunityId} via API...`);
+      const result = await window.fetchAPI(`/agent/applyOpportunity/${opportunityId}`, { method: 'POST' });
       
       if (result.success) {
         // Show success message
@@ -359,7 +362,8 @@ class NotificationCenter {
     
     try {
       // Get schedule details
-      const schedule = await window.electronAPI.getSchedule(scheduleId);
+      console.log(`Fetching schedule ${scheduleId} via API...`);
+      const schedule = await window.fetchAPI(`/firebase/schedule/${scheduleId}`);
       
       if (schedule.client_id) {
         // Switch to client profile view if client exists

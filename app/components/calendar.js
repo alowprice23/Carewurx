@@ -77,26 +77,25 @@ class Calendar {
       let schedules = [];
       
       // Get schedules based on the context (client, caregiver, or all)
+      const startDate = this.getFirstDayOfMonth();
+      const endDate = this.getLastDayOfMonth();
+
       if (this.options.clientId) {
-        console.log(`Fetching schedules for client ${this.options.clientId}`);
-        schedules = await window.electronAPI.getSchedulesByClientId(
-          this.options.clientId,
-          this.getFirstDayOfMonth(),
-          this.getLastDayOfMonth()
-        );
+        console.log(`Fetching schedules for client ${this.options.clientId} via API`);
+        schedules = await window.fetchAPI(`/firebase/schedulesByClientId/${this.options.clientId}`, {
+          params: { startDate, endDate }
+        });
       } else if (this.options.caregiverId) {
-        console.log(`Fetching schedules for caregiver ${this.options.caregiverId}`);
-        schedules = await window.electronAPI.getSchedulesByCaregiverId(
-          this.options.caregiverId,
-          this.getFirstDayOfMonth(),
-          this.getLastDayOfMonth()
-        );
+        console.log(`Fetching schedules for caregiver ${this.options.caregiverId} via API`);
+        schedules = await window.fetchAPI(`/firebase/schedulesByCaregiverId/${this.options.caregiverId}`, {
+          params: { startDate, endDate }
+        });
       } else {
         // Fallback to all schedules if no specific ID provided
-        schedules = await window.electronAPI.getSchedulesInDateRange(
-          this.getFirstDayOfMonth(),
-          this.getLastDayOfMonth()
-        );
+        console.log('Fetching all schedules in date range via API');
+        schedules = await window.fetchAPI('/firebase/schedulesInDateRange', {
+          params: { startDate, endDate }
+        });
       }
       
       if (schedules && schedules.length > 0) {

@@ -255,7 +255,8 @@ class RealTimeUpdatesService {
     try {
       // Get related client and caregiver
       if (data.client_id) {
-        const client = await window.electronAPI.getClient(data.client_id);
+        console.log(`Cascading schedule update: fetching client ${data.client_id} via API...`);
+        const client = await window.fetchAPI(`/firebase/client/${data.client_id}`);
         if (client) {
           // Publish an update for the client with related schedule changes
           const clientUpdate = {
@@ -272,7 +273,8 @@ class RealTimeUpdatesService {
       }
       
       if (data.caregiver_id) {
-        const caregiver = await window.electronAPI.getCaregiver(data.caregiver_id);
+        console.log(`Cascading schedule update: fetching caregiver ${data.caregiver_id} via API...`);
+        const caregiver = await window.fetchAPI(`/firebase/caregiver/${data.caregiver_id}`);
         if (caregiver) {
           // Publish an update for the caregiver with related schedule changes
           const caregiverUpdate = {
@@ -289,7 +291,8 @@ class RealTimeUpdatesService {
       }
       
       // Check for scheduling conflicts and opportunities
-      const conflicts = await window.electronAPI.checkScheduleConflicts(data.id);
+      console.log(`Cascading schedule update: checking conflicts for schedule ${data.id} via API...`);
+      const conflicts = await window.fetchAPI(`/scheduler/checkConflicts/${data.id}`);
       if (conflicts && conflicts.length > 0) {
         // Create a notification for each conflict
         for (const conflict of conflicts) {
@@ -342,7 +345,9 @@ class RealTimeUpdatesService {
     
     try {
       // Get client's schedules
-      const schedules = await window.electronAPI.getSchedulesByClient(data.id);
+      console.log(`Cascading client update: fetching schedules for client ${data.id} via API...`);
+      // Correcting presumed typo: getSchedulesByClient -> getSchedulesByClientId
+      const schedules = await window.fetchAPI(`/firebase/schedulesByClientId/${data.id}`);
       
       if (schedules && schedules.length > 0) {
         // Update each schedule with the latest client information
@@ -391,7 +396,9 @@ class RealTimeUpdatesService {
     
     try {
       // Get caregiver's schedules
-      const schedules = await window.electronAPI.getSchedulesByCaregiver(data.id);
+      console.log(`Cascading caregiver update: fetching schedules for caregiver ${data.id} via API...`);
+      // Correcting presumed typo: getSchedulesByCaregiver -> getSchedulesByCaregiverId
+      const schedules = await window.fetchAPI(`/firebase/schedulesByCaregiverId/${data.id}`);
       
       if (schedules && schedules.length > 0) {
         // Update each schedule with the latest caregiver information
@@ -493,7 +500,8 @@ class RealTimeUpdatesService {
         // If accepted, update any related schedules
         if (data.status === 'accepted' && data.schedules && data.schedules.length > 0) {
           for (const scheduleId of data.schedules) {
-            const schedule = await window.electronAPI.getSchedule(scheduleId);
+            console.log(`Cascading opportunity update: fetching schedule ${scheduleId} via API...`);
+            const schedule = await window.fetchAPI(`/firebase/schedule/${scheduleId}`);
             if (schedule) {
               const scheduleUpdate = {
                 ...schedule,

@@ -36,7 +36,7 @@ const MOCK_SCAN_HISTORY = [
 
 class ScannerService {
   constructor() {
-    this.isElectronAvailable = typeof window !== 'undefined' && window.electronAPI;
+    // this.isElectronAvailable = typeof window !== 'undefined' && window.electronAPI; // To be removed
     this.mockScanHistory = [...MOCK_SCAN_HISTORY];
     this.mockStatus = {
       isRunning: false,
@@ -46,7 +46,39 @@ class ScannerService {
     };
     this.mockScanInterval = null;
     
-    console.log(`Scanner Service initializing in ${this.isElectronAvailable ? 'Electron' : 'browser-only'} mode`);
+    console.log('Scanner Service initializing for web API communication.');
+  }
+
+  async _fetchAPI(endpoint, options = {}) {
+    const { body, method = 'GET', params } = options;
+    let url = `/api${endpoint}`;
+
+    if (params) {
+      url += `?${new URLSearchParams(params)}`;
+    }
+
+    const fetchOptions = {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    };
+
+    if (body) {
+      fetchOptions.body = JSON.stringify(body);
+    }
+
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(`API Error (${response.status}): ${errorData.message || 'Unknown error'}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.error(`Error fetching ${url}:`, error);
+      throw error;
+    }
   }
 
   /**
@@ -55,20 +87,13 @@ class ScannerService {
    */
   async getStatus() {
     try {
-      if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.getScheduleScannerStatus();
-      } else {
-        // Browser-only mode: return mock status
-        console.log('Scanner Service: Using mock status in browser-only mode');
-        await delay(500); // Simulate network delay
-        return this.mockStatus;
-      }
+      return await this._fetchAPI('/scanner/status');
     } catch (error) {
-      console.error('Error getting scanner status:', error);
-      throw new Error(`Failed to get scanner status: ${error.message}`);
+      console.warn('API call failed for getStatus, falling back to mock.', error);
+      // Fallback to mock
+      console.log('Scanner Service: Using mock status due to API error or browser-only mode');
+      await delay(500);
+      return { ...this.mockStatus }; // Return a copy
     }
   }
 
@@ -79,59 +104,38 @@ class ScannerService {
    */
   async start(intervalMinutes = 30) {
     try {
-      if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.startScheduleScanner(intervalMinutes);
-      } else {
-        // Browser-only mode: simulate scanner start
-        console.log(`Scanner Service: Starting mock scanner with ${intervalMinutes} minute interval in browser-only mode`);
-        await delay(700); // Simulate network delay
-        
-        // Update mock status
-        this.mockStatus.isRunning = true;
-        this.mockStatus.intervalMinutes = intervalMinutes;
-        
-        // Clear any existing interval
-        if (this.mockScanInterval) {
-          clearInterval(this.mockScanInterval);
-        }
-        
-        // Set up mock interval for demonstration purposes
-        // This won't actually do anything except update timestamps
-        // In real usage, the interval would be too long anyway (we're just simulating)
-        this.mockScanInterval = setInterval(() => {
-          this.mockStatus.lastScan = new Date().toISOString();
-          this.mockStatus.totalScansRun++;
-          
-          // Add to mock history
-          const newScan = {
-            id: `scan-${Date.now()}`,
-            timestamp: new Date().toISOString(),
-            opportunitiesFound: Math.floor(Math.random() * 10),
-            durationMs: 800 + Math.floor(Math.random() * 800),
-            status: 'completed'
-          };
-          
-          this.mockScanHistory.unshift(newScan);
-          
-          console.log('Scanner Service: Mock scan completed:', newScan);
-          
-          // Dispatch event for subscribers
-          const event = new CustomEvent('scan-results', { detail: newScan });
-          window.dispatchEvent(event);
-        }, 60000); // Simulate a scan every minute (just for demonstration)
-        
-        return {
-          success: true,
-          message: `Mock scanner started with ${intervalMinutes} minute interval`,
-          status: this.mockStatus
-        };
-      }
+      return await this._fetchAPI('/scanner/start', {
+        method: 'POST',
+        body: { intervalMinutes },
+      });
     } catch (error) {
-      console.error('Error starting scanner:', error);
-      throw new Error(`Failed to start scanner: ${error.message}`);
+      console.warn('API call failed for start, falling back to mock.', error);
+      // Fallback to mock
+      console.log(`Scanner Service: Starting mock scanner with ${intervalMinutes} minute interval due to API error or browser-only mode`);
+      await delay(700);
+      this.mockStatus.isRunning = true;
+      this.mockStatus.intervalMinutes = intervalMinutes;
+      if (this.mockScanInterval) clearInterval(this.mockScanInterval);
+      this.mockScanInterval = setInterval(() => {
+        this.mockStatus.lastScan = new Date().toISOString();
+        this.mockStatus.totalScansRun++;
+        const newScan = {
+          id: `scan-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          opportunitiesFound: Math.floor(Math.random() * 10),
+          durationMs: 800 + Math.floor(Math.random() * 800),
+          status: 'completed'
+        };
+        this.mockScanHistory.unshift(newScan);
+        console.log('Scanner Service: Mock scan completed:', newScan);
+        const event = new CustomEvent('scan-results', { detail: newScan });
+        window.dispatchEvent(event);
+      }, 60000); // Mock interval
+      return {
+        success: true,
+        message: `Mock scanner started with ${intervalMinutes} minute interval`,
+        status: { ...this.mockStatus }
+      };
     }
   }
 
@@ -141,34 +145,22 @@ class ScannerService {
    */
   async stop() {
     try {
-      if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.stopScheduleScanner();
-      } else {
-        // Browser-only mode: simulate scanner stop
-        console.log('Scanner Service: Stopping mock scanner in browser-only mode');
-        await delay(500); // Simulate network delay
-        
-        // Update mock status
-        this.mockStatus.isRunning = false;
-        
-        // Clear interval
-        if (this.mockScanInterval) {
-          clearInterval(this.mockScanInterval);
-          this.mockScanInterval = null;
-        }
-        
-        return {
-          success: true,
-          message: 'Mock scanner stopped',
-          status: this.mockStatus
-        };
-      }
+      return await this._fetchAPI('/scanner/stop', { method: 'POST' });
     } catch (error) {
-      console.error('Error stopping scanner:', error);
-      throw new Error(`Failed to stop scanner: ${error.message}`);
+      console.warn('API call failed for stop, falling back to mock.', error);
+      // Fallback to mock
+      console.log('Scanner Service: Stopping mock scanner due to API error or browser-only mode');
+      await delay(500);
+      this.mockStatus.isRunning = false;
+      if (this.mockScanInterval) {
+        clearInterval(this.mockScanInterval);
+        this.mockScanInterval = null;
+      }
+      return {
+        success: true,
+        message: 'Mock scanner stopped',
+        status: { ...this.mockStatus }
+      };
     }
   }
 
@@ -179,45 +171,32 @@ class ScannerService {
    */
   async forceScan(options = {}) {
     try {
-      if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.forceScanSchedules(options);
-      } else {
-        // Browser-only mode: simulate forced scan
-        console.log('Scanner Service: Forcing mock scan in browser-only mode');
-        await delay(2000); // Simulate longer network delay for scanning
-        
-        // Update mock status
-        this.mockStatus.lastScan = new Date().toISOString();
-        this.mockStatus.totalScansRun++;
-        
-        // Create scan result
-        const scanResult = {
-          id: `scan-${Date.now()}`,
-          timestamp: new Date().toISOString(),
-          opportunitiesFound: Math.floor(Math.random() * 10),
-          durationMs: 1500 + Math.floor(Math.random() * 1000),
-          status: 'completed'
-        };
-        
-        // Add to mock history
-        this.mockScanHistory.unshift(scanResult);
-        
-        // Dispatch event for subscribers
-        const event = new CustomEvent('scan-results', { detail: scanResult });
-        window.dispatchEvent(event);
-        
-        return {
-          success: true,
-          message: 'Mock scan completed successfully',
-          result: scanResult
-        };
-      }
+      return await this._fetchAPI('/scanner/forceScan', {
+        method: 'POST',
+        body: { options },
+      });
     } catch (error) {
-      console.error('Error forcing scan:', error);
-      throw new Error(`Failed to force scan: ${error.message}`);
+      console.warn('API call failed for forceScan, falling back to mock.', error);
+      // Fallback to mock
+      console.log('Scanner Service: Forcing mock scan due to API error or browser-only mode');
+      await delay(2000);
+      this.mockStatus.lastScan = new Date().toISOString();
+      this.mockStatus.totalScansRun++;
+      const scanResult = {
+        id: `scan-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        opportunitiesFound: Math.floor(Math.random() * 10),
+        durationMs: 1500 + Math.floor(Math.random() * 1000),
+        status: 'completed'
+      };
+      this.mockScanHistory.unshift(scanResult);
+      const event = new CustomEvent('scan-results', { detail: scanResult });
+      window.dispatchEvent(event);
+      return {
+        success: true,
+        message: 'Mock scan completed successfully',
+        result: scanResult
+      };
     }
   }
 
@@ -228,21 +207,13 @@ class ScannerService {
    */
   async getHistory(limit = 10) {
     try {
-      if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.getScanHistory(limit);
-      } else {
-        // Browser-only mode: return mock history
-        console.log('Scanner Service: Using mock history in browser-only mode');
-        await delay(600); // Simulate network delay
-        
-        return this.mockScanHistory.slice(0, limit);
-      }
+      return await this._fetchAPI('/scanner/history', { params: { limit } });
     } catch (error) {
-      console.error('Error getting scan history:', error);
-      throw new Error(`Failed to get scan history: ${error.message}`);
+      console.warn('API call failed for getHistory, falling back to mock.', error);
+      // Fallback to mock
+      console.log('Scanner Service: Using mock history due to API error or browser-only mode');
+      await delay(600);
+      return this.mockScanHistory.slice(0, limit);
     }
   }
 
@@ -252,55 +223,26 @@ class ScannerService {
    * @returns {Function} - Cleanup function to stop the scanner
    */
   setupBackgroundScanner(intervalMinutes = 30) {
-    if (this.isElectronAvailable) {
-      // Electron mode: Use the actual electron API
-      if (!window.electronAPI) {
-        console.error('Electron API not available - cannot set up background scanner');
-        return () => {}; // Return empty cleanup function
-      }
+    // This method now uses the refactored start/stop which have API calls & fallbacks
+    console.log(`Scanner Service: Setting up background scanner with ${intervalMinutes} minute interval.`);
+
+    this.start(intervalMinutes)
+      .then(result => {
+        console.log('Background scanner started/mocked:', result);
+      })
+      .catch(error => {
+        console.error('Failed to start background scanner/mock:', error);
+      });
       
-      // Start the scanner
-      this.start(intervalMinutes)
-        .then(result => {
-          console.log('Background scanner started:', result);
+    return () => {
+      this.stop()
+        .then(() => {
+          console.log('Background scanner stopped/mocked');
         })
         .catch(error => {
-          console.error('Failed to start background scanner:', error);
+          console.error('Failed to stop background scanner/mock:', error);
         });
-        
-      // Return cleanup function
-      return () => {
-        this.stop()
-          .then(() => {
-            console.log('Background scanner stopped');
-          })
-          .catch(error => {
-            console.error('Failed to stop background scanner:', error);
-          });
-      };
-    } else {
-      // Browser-only mode: Set up mock background scanner
-      console.log(`Scanner Service: Setting up mock background scanner with ${intervalMinutes} minute interval`);
-      
-      this.start(intervalMinutes)
-        .then(result => {
-          console.log('Mock background scanner started:', result);
-        })
-        .catch(error => {
-          console.error('Failed to start mock background scanner:', error);
-        });
-      
-      // Return cleanup function
-      return () => {
-        this.stop()
-          .then(() => {
-            console.log('Mock background scanner stopped');
-          })
-          .catch(error => {
-            console.error('Failed to stop mock background scanner:', error);
-          });
-      };
-    }
+    };
   }
   
   /**

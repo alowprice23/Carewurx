@@ -61,7 +61,8 @@ class OpportunityViewer {
       this.scanButton.textContent = 'Scanning...';
       
       // Call the backend to scan for opportunities
-      const opportunities = await window.electronAPI.scanForOpportunities();
+      console.log('Manually scanning for opportunities via API...');
+      const opportunities = await window.fetchAPI('/agent/scanForOpportunities', { method: 'POST', body: {} }); // Assuming empty body or pass options if any
       
       this.scanButton.disabled = false;
       this.scanButton.textContent = 'Scan for Opportunities';
@@ -112,7 +113,8 @@ class OpportunityViewer {
    */
   async fetchInitialOpportunities() {
     try {
-      const opportunities = await window.electronAPI.getOpportunities({ status: 'pending' });
+      console.log('Fetching initial opportunities via API...');
+      const opportunities = await window.fetchAPI('/firebase/opportunities', { params: { status: 'pending' } });
       if (opportunities && opportunities.length > 0) {
         this.opportunities = opportunities;
         this.render();
@@ -326,7 +328,8 @@ class OpportunityViewer {
     
     try {
       // Get detailed information about the opportunity
-      const opportunityDetails = await window.electronAPI.getOpportunityDetails(opportunityId);
+      console.log(`Fetching details for opportunity ${opportunityId} via API...`);
+      const opportunityDetails = await window.fetchAPI(`/agent/opportunityDetails/${opportunityId}`);
       
       // Create a modal to display the details
       this.showDetailsModal(opportunityDetails);
@@ -587,7 +590,8 @@ class OpportunityViewer {
     
     try {
       // Send request to apply the opportunity
-      const result = await window.electronAPI.applyOpportunity(opportunityId);
+      console.log(`Applying for opportunity ${opportunityId} via API...`);
+      const result = await window.fetchAPI(`/agent/applyOpportunity/${opportunityId}`, { method: 'POST' });
       
       if (result.success) {
         // Update the local list of opportunities
@@ -621,7 +625,9 @@ class OpportunityViewer {
       }
       
       // Call the API to reject the opportunity
-      await window.electronAPI.rejectOpportunity(opportunityId);
+      console.log(`Dismissing opportunity ${opportunityId} via API...`);
+      // Assuming reason is optional or handled by API if not provided
+      await window.fetchAPI(`/agent/rejectOpportunity/${opportunityId}`, { method: 'POST', body: { reason: 'Dismissed from UI' } });
       
       // Remove the opportunity from the list
       this.opportunities = this.opportunities.filter(o => o.id !== opportunityId);

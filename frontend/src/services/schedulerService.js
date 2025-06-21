@@ -4,6 +4,43 @@
  */
 
 class SchedulerService {
+  constructor() {
+    console.log('Scheduler Service initializing for web API communication.');
+  }
+
+  async _fetchAPI(endpoint, options = {}) {
+    const { body, method = 'GET', params } = options;
+    let url = `/api${endpoint}`;
+
+    if (params) {
+      url += `?${new URLSearchParams(params)}`;
+    }
+
+    const fetchOptions = {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    };
+
+    if (body) {
+      fetchOptions.body = JSON.stringify(body);
+    }
+
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(`API Error (${response.status}) in ${method} ${url}: ${errorData.message || 'Unknown error'}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.error(`Error fetching ${url}:`, error);
+      // Re-throw the error to be handled by the caller, as this service currently has no mock fallbacks
+      throw error;
+    }
+  }
+
   /**
    * Create a new schedule
    * @param {Object} scheduleData - The schedule data
@@ -11,12 +48,12 @@ class SchedulerService {
    */
   async createSchedule(scheduleData) {
     try {
-      if (!window.electronAPI) {
-        throw new Error('Electron API not available - backend connection missing');
-      }
-      return await window.electronAPI.createSchedule(scheduleData);
+      return await this._fetchAPI('/scheduler/createSchedule', {
+        method: 'POST',
+        body: { scheduleData }, // server.js expects { scheduleData: ... }
+      });
     } catch (error) {
-      console.error('Error creating schedule:', error);
+      console.error('Error creating schedule via API:', error);
       throw new Error(`Failed to create schedule: ${error.message}`);
     }
   }
@@ -29,12 +66,12 @@ class SchedulerService {
    */
   async updateSchedule(scheduleId, updatedData) {
     try {
-      if (!window.electronAPI) {
-        throw new Error('Electron API not available - backend connection missing');
-      }
-      return await window.electronAPI.updateSchedule(scheduleId, updatedData);
+      return await this._fetchAPI(`/scheduler/updateSchedule/${scheduleId}`, {
+        method: 'PUT',
+        body: { updatedData }, // server.js expects { updatedData: ... }
+      });
     } catch (error) {
-      console.error('Error updating schedule:', error);
+      console.error('Error updating schedule via API:', error);
       throw new Error(`Failed to update schedule: ${error.message}`);
     }
   }
@@ -46,12 +83,11 @@ class SchedulerService {
    */
   async deleteSchedule(scheduleId) {
     try {
-      if (!window.electronAPI) {
-        throw new Error('Electron API not available - backend connection missing');
-      }
-      return await window.electronAPI.deleteSchedule(scheduleId);
+      return await this._fetchAPI(`/scheduler/deleteSchedule/${scheduleId}`, {
+        method: 'DELETE',
+      });
     } catch (error) {
-      console.error('Error deleting schedule:', error);
+      console.error('Error deleting schedule via API:', error);
       throw new Error(`Failed to delete schedule: ${error.message}`);
     }
   }
@@ -63,10 +99,10 @@ class SchedulerService {
    */
   async findBestCaregiver(scheduleId) {
     try {
-      return await window.electronAPI.findBestCaregiver(scheduleId);
+      return await this._fetchAPI(`/scheduler/findBestCaregiver/${scheduleId}`);
     } catch (error) {
-      console.error('Error finding best caregiver:', error);
-      throw error;
+      console.error('Error finding best caregiver via API:', error);
+      throw error; // Re-throw as per original behavior
     }
   }
 
@@ -78,10 +114,13 @@ class SchedulerService {
    */
   async createClientSchedule(clientId, scheduleData) {
     try {
-      return await window.electronAPI.createClientSchedule(clientId, scheduleData);
-    } catch (error) {
-      console.error('Error creating client schedule:', error);
-      throw error;
+      return await this._fetchAPI(`/scheduler/createClientSchedule/${clientId}`, {
+        method: 'POST',
+        body: { scheduleData },
+      });
+    } catch (error) { // Added opening brace
+      console.error('Error creating client schedule via API:', error);
+      throw error; // Re-throw
     }
   }
 
@@ -93,10 +132,13 @@ class SchedulerService {
    */
   async assignCaregiverToSchedule(scheduleId, caregiverId) {
     try {
-      return await window.electronAPI.assignCaregiverToSchedule(scheduleId, caregiverId);
+      // The API endpoint expects both IDs in the URL.
+      return await this._fetchAPI(`/scheduler/assignCaregiverToSchedule/${scheduleId}/${caregiverId}`, {
+        method: 'POST', // Or PUT, depending on idempotency expectation
+      });
     } catch (error) {
-      console.error('Error assigning caregiver to schedule:', error);
-      throw error;
+      console.error('Error assigning caregiver to schedule via API:', error);
+      throw error; // Re-throw
     }
   }
 
@@ -107,10 +149,10 @@ class SchedulerService {
    */
   async findAvailableCaregivers(scheduleId) {
     try {
-      return await window.electronAPI.findAvailableCaregivers(scheduleId);
+      return await this._fetchAPI(`/scheduler/findAvailableCaregivers/${scheduleId}`);
     } catch (error) {
-      console.error('Error finding available caregivers:', error);
-      throw error;
+      console.error('Error finding available caregivers via API:', error);
+      throw error; // Re-throw
     }
   }
 
@@ -121,10 +163,10 @@ class SchedulerService {
    */
   async checkConflicts(scheduleId) {
     try {
-      return await window.electronAPI.checkScheduleConflicts(scheduleId);
+      return await this._fetchAPI(`/scheduler/checkConflicts/${scheduleId}`);
     } catch (error) {
-      console.error('Error checking schedule conflicts:', error);
-      throw error;
+      console.error('Error checking schedule conflicts via API:', error);
+      throw error; // Re-throw
     }
   }
 
@@ -136,10 +178,13 @@ class SchedulerService {
    */
   async resolveConflict(conflictId, resolution) {
     try {
-      return await window.electronAPI.resolveScheduleConflict(conflictId, resolution);
+      return await this._fetchAPI(`/scheduler/resolveConflict/${conflictId}`, {
+        method: 'POST',
+        body: { resolution },
+      });
     } catch (error) {
-      console.error('Error resolving schedule conflict:', error);
-      throw error;
+      console.error('Error resolving schedule conflict via API:', error);
+      throw error; // Re-throw
     }
   }
 
@@ -150,10 +195,10 @@ class SchedulerService {
    */
   async getScheduleWithDetails(scheduleId) {
     try {
-      return await window.electronAPI.getScheduleWithDetails(scheduleId);
+      return await this._fetchAPI(`/scheduler/scheduleWithDetails/${scheduleId}`);
     } catch (error) {
-      console.error('Error getting schedule details:', error);
-      throw error;
+      console.error('Error getting schedule details via API:', error);
+      throw error; // Re-throw
     }
   }
 
@@ -164,10 +209,13 @@ class SchedulerService {
    */
   async optimizeSchedules(date) {
     try {
-      return await window.electronAPI.optimizeSchedules(date);
+      return await this._fetchAPI('/scheduler/optimizeSchedules', {
+        method: 'POST',
+        body: { date },
+      });
     } catch (error) {
-      console.error('Error optimizing schedules:', error);
-      throw error;
+      console.error('Error optimizing schedules via API:', error);
+      throw error; // Re-throw
     }
   }
 }

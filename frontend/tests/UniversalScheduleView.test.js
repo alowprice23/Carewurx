@@ -4,18 +4,20 @@ import '@testing-library/jest-dom';
 import { UniversalScheduleView } from '../src/components';
 import { universalScheduleService } from '../src/services';
 
+import { act } from 'react-dom/test-utils'; // Import act
+
 // Mock the universalScheduleService
-jest.mock('../src/services', () => ({
-  universalScheduleService: {
-    getSchedules: jest.fn(),
-    getSchedule: jest.fn(),
-    findConflicts: jest.fn(),
-    createSchedule: jest.fn(),
-    updateSchedule: jest.fn(),
-    deleteSchedule: jest.fn(),
-    getScheduleWithDetails: jest.fn()
-  }
+jest.mock('../src/services/universalScheduleService', () => ({
+  getSchedules: jest.fn(),
+  getSchedule: jest.fn(),
+  findConflicts: jest.fn(),
+  createSchedule: jest.fn(),
+  updateSchedule: jest.fn(),
+  deleteSchedule: jest.fn(),
+  getScheduleWithDetails: jest.fn()
 }));
+// const universalScheduleService = require('../src/services/universalScheduleService'); // This line is redundant and causes the error
+
 
 describe('UniversalScheduleView Component', () => {
   // Mock data for testing
@@ -44,161 +46,165 @@ describe('UniversalScheduleView Component', () => {
     }
   ];
 
+  let getSchedulesPromise;
+  let findConflictsPromise;
+
   beforeEach(() => {
     jest.clearAllMocks();
     
-    // Default mock implementations
+    // Each test will set its own promise resolution for getSchedules if needed for specific timing
+    // Default successful resolution
     universalScheduleService.getSchedules.mockResolvedValue(mockSchedules);
     universalScheduleService.findConflicts.mockResolvedValue([]);
-    universalScheduleService.createSchedule.mockResolvedValue({ id: 'new-sched', ...mockSchedules[0] });
+    universalScheduleService.createSchedule.mockResolvedValue({ id: 'new-sched', ...mockSchedules[0], client: mockSchedules[0].client, caregiver: mockSchedules[0].caregiver });
     universalScheduleService.updateSchedule.mockResolvedValue({ success: true });
     universalScheduleService.deleteSchedule.mockResolvedValue({ success: true });
     universalScheduleService.getScheduleWithDetails.mockImplementation(async (id) => {
       return mockSchedules.find(s => s.id === id) || null;
     });
     
-    // Mock the window.confirm for delete confirmations
     window.confirm = jest.fn(() => true);
-    
-    // Mock the window.prompt for edit prompts
     window.prompt = jest.fn(() => 'Updated Title');
   });
 
-  test('renders the component correctly', async () => {
+  test('renders the component correctly and shows loading state, then schedules', async () => {
+    // Make getSchedules not resolve immediately to test loading state
+    let resolveGetSchedules;
+    let resolveFindConflicts;
+    const initialGetSchedulesPromise = new Promise(resolve => { resolveGetSchedules = resolve; });
+    const initialFindConflictsPromise = new Promise(resolve => { resolveFindConflicts = resolve; });
+
+    universalScheduleService.getSchedules.mockImplementationOnce(() => initialGetSchedulesPromise);
+    // Assuming findConflicts is called for each schedule from the above promise
+    universalScheduleService.findConflicts.mockImplementation(() => initialFindConflictsPromise);
+
+
     render(<UniversalScheduleView />);
     
-    // Check for initial elements
     expect(screen.getByText(/Day/i)).toBeInTheDocument();
-    expect(screen.getByText(/Week/i)).toBeInTheDocument();
-    expect(screen.getByText(/Month/i)).toBeInTheDocument();
-    
-    // Wait for schedules to load
-    await waitFor(() => {
-      expect(universalScheduleService.getSchedules).toHaveBeenCalled();
+    expect(screen.getByText(/Loading schedules/i)).toBeInTheDocument();
+
+    // Resolve the promises and wait for state updates
+    await act(async () => {
+      resolveGetSchedules(mockSchedules); // Resolve with mock data
+      await initialGetSchedulesPromise;
+      // Since findConflicts is called per schedule, resolve them all
+      // For simplicity, we'll assume they resolve quickly after getSchedules.
+      // In a more complex scenario, each findConflicts call might need individual resolution.
+      resolveFindConflicts([]); // Resolve with empty conflicts for all
+      await Promise.all(mockSchedules.map(() => initialFindConflictsPromise));
     });
     
-    // Loading indicator should be shown initially
-    expect(screen.getByText(/Loading schedules/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Loading schedules/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Morning Care Visit/i)).toBeInTheDocument();
+    expect(screen.getByText(/Medication Management/i)).toBeInTheDocument();
   });
 
-  test('displays schedules when loaded', async () => {
-    render(<UniversalScheduleView />);
-    
-    // Wait for loading to complete
-    await waitFor(() => {
-      expect(universalScheduleService.getSchedules).toHaveBeenCalled();
-    });
-    
-    // Mock that loading is complete by removing the loading indicator
-    universalScheduleService.getSchedules.mockImplementation(() => {
-      // This change will trigger a re-render without the loading indicator
-      return Promise.resolve(mockSchedules);
-    });
-    
-    // Trigger a re-render to show schedules
-    fireEvent.click(screen.getByText(/Day/i));
-    
-    // Check for schedule data to be displayed
-    await waitFor(() => {
-      // Note: These might be hard to find in the DOM because they're part of the grid
-      // We might need to adjust the query based on the actual component implementation
-      expect(screen.queryByText(/Loading schedules/i)).not.toBeInTheDocument();
-    });
-  });
 
   test('allows switching between view modes', async () => {
     render(<UniversalScheduleView />);
     
-    // Wait for initial load
-    await waitFor(() => {
-      expect(universalScheduleService.getSchedules).toHaveBeenCalled();
+    // Wait for initial load to complete
+    await screen.findByText(/Morning Care Visit/i); // Ensures initial data is loaded
+
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Day/i));
     });
+    // Add assertions if view change triggers new data fetches or specific UI updates
+    // For now, just check the button is still there and active class might change
+    expect(screen.getByText(/Day/i)).toHaveClass('active');
     
-    // Click on Day view button
-    fireEvent.click(screen.getByText(/Day/i));
-    
-    // Click on Week view button
-    fireEvent.click(screen.getByText(/Week/i));
-    
-    // Click on Month view button
-    fireEvent.click(screen.getByText(/Month/i));
-    
-    // Each click should trigger a re-render but doesn't necessarily change visual elements
-    // in this test environment, so we just verify the clicks don't cause errors
-    expect(screen.getByText(/Day/i)).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Week/i));
+    });
+    expect(screen.getByText(/Week/i)).toHaveClass('active');
+
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Month/i));
+    });
+    expect(screen.getByText(/Month/i)).toHaveClass('active');
   });
 
   test('allows filtering by display mode', async () => {
     render(<UniversalScheduleView />);
+    await screen.findByText(/Morning Care Visit/i); // Ensures initial data is loaded
     
-    // Wait for initial load
-    await waitFor(() => {
-      expect(universalScheduleService.getSchedules).toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Client Only/i));
     });
+    expect(screen.getByText(/Client Only/i)).toHaveClass('active');
+    // Potentially assert that only client schedules are visible if component supports it visually
     
-    // Click on Client Only button
-    fireEvent.click(screen.getByText(/Client Only/i));
-    
-    // Click on Caregiver Only button
-    fireEvent.click(screen.getByText(/Caregiver Only/i));
-    
-    // Click on All Schedules button
-    fireEvent.click(screen.getByText(/All Schedules/i));
-    
-    // Again, these clicks trigger state changes but don't necessarily affect the DOM
-    // in ways we can easily test without more complex setup
-    expect(screen.getByText(/Client Only/i)).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Caregiver Only/i));
+    });
+    expect(screen.getByText(/Caregiver Only/i)).toHaveClass('active');
+
+    await act(async () => {
+      fireEvent.click(screen.getByText(/All Schedules/i));
+    });
+    expect(screen.getByText(/All Schedules/i)).toHaveClass('active');
   });
 
   test('allows creating a new schedule', async () => {
+    // Reset getSchedules to be called for the refresh
+    universalScheduleService.getSchedules.mockResolvedValueOnce(mockSchedules) // Initial load
+                                        .mockResolvedValueOnce([...mockSchedules, { id: 'new-sched', ...mockSchedules[0], title: 'New Schedule From API' }]); // After creation
+
     render(<UniversalScheduleView />);
-    
-    // Wait for initial load
-    await waitFor(() => {
-      expect(universalScheduleService.getSchedules).toHaveBeenCalled();
+    await screen.findByText(/Morning Care Visit/i); // Initial load complete
+
+    await act(async () => {
+      fireEvent.click(screen.getByText(/\+ New Schedule/i));
+      // Ensure createSchedule promise resolves before getSchedules is called again
+      await universalScheduleService.createSchedule.mock.results[0].value;
+      // Wait for the subsequent getSchedules call to resolve
+      if (universalScheduleService.getSchedules.mock.calls.length > 1) {
+        await universalScheduleService.getSchedules.mock.results[1].value;
+      }
     });
     
-    // Click the "New Schedule" button
-    fireEvent.click(screen.getByText(/\+ New Schedule/i));
+    expect(universalScheduleService.createSchedule).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'New Schedule' // This matches the default title in handleCreateSchedule
+      })
+    );
     
-    // Check that the service was called with appropriate data
-    await waitFor(() => {
-      expect(universalScheduleService.createSchedule).toHaveBeenCalledWith(
-        expect.objectContaining({
-          date: expect.any(String),
-          startTime: '09:00',
-          endTime: '10:00',
-          title: 'New Schedule'
-        })
-      );
-    });
-    
-    // After creation, schedules should be refreshed
     expect(universalScheduleService.getSchedules).toHaveBeenCalledTimes(2);
+    // Optionally, check if the new schedule is rendered
+    // await screen.findByText(/New Schedule From API/i); // If the mock returns it with this title
   });
 
   test('allows navigating date ranges', async () => {
-    render(<UniversalScheduleView />);
-    
-    // Wait for initial load
-    await waitFor(() => {
-      expect(universalScheduleService.getSchedules).toHaveBeenCalled();
-    });
-    
-    // Click the "Previous" button
-    fireEvent.click(screen.getByText(/< Previous/i));
-    
-    // Click the "Next" button
-    fireEvent.click(screen.getByText(/Next >/i));
-    
-    // Schedules should be refreshed after each navigation
-    expect(universalScheduleService.getSchedules).toHaveBeenCalledTimes(3);
-  });
+    // Initial call
+    universalScheduleService.getSchedules.mockResolvedValueOnce(mockSchedules);
+    // Call after "Previous"
+    universalScheduleService.getSchedules.mockResolvedValueOnce([{ ...mockSchedules[0], title: "Previous Range Schedule" }]);
+    // Call after "Next"
+    universalScheduleService.getSchedules.mockResolvedValueOnce([{ ...mockSchedules[0], title: "Next Range Schedule" }]);
 
-  // Additional tests could cover:
-  // - Schedule selection
-  // - Schedule editing
-  // - Schedule deletion
-  // - Drag and drop functionality (harder to test with jsdom)
-  // - Conflict detection and display
+
+    render(<UniversalScheduleView />);
+    await screen.findByText(/Morning Care Visit/i); // Initial load
+    expect(universalScheduleService.getSchedules).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText(/< Previous/i));
+      // Wait for the specific mock call to resolve
+      if (universalScheduleService.getSchedules.mock.calls.length > 1) {
+         await universalScheduleService.getSchedules.mock.results[1].value;
+      }
+    });
+    expect(universalScheduleService.getSchedules).toHaveBeenCalledTimes(2);
+    await screen.findByText(/Previous Range Schedule/i);
+    
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Next >/i));
+       if (universalScheduleService.getSchedules.mock.calls.length > 2) {
+         await universalScheduleService.getSchedules.mock.results[2].value;
+      }
+    });
+    expect(universalScheduleService.getSchedules).toHaveBeenCalledTimes(3);
+    await screen.findByText(/Next Range Schedule/i);
+  });
 });

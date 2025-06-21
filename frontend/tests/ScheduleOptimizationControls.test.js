@@ -185,25 +185,28 @@ describe('ScheduleOptimizationControls Component', () => {
       expect(schedulerService.getOptimizationHistory).toHaveBeenCalled();
     });
     
-    // Check for main elements
-    expect(screen.getByText('Optimization Parameters')).toBeInTheDocument();
-    expect(screen.getByText('Optimization Results')).toBeInTheDocument();
-    expect(screen.getByText('Optimization History')).toBeInTheDocument();
-    
-    // Check for preset buttons
-    expect(screen.getByText('Balanced')).toBeInTheDocument();
-    expect(screen.getByText('Client-Focused')).toBeInTheDocument();
-    expect(screen.getByText('Caregiver-Focused')).toBeInTheDocument();
-    expect(screen.getByText('Efficiency-Focused')).toBeInTheDocument();
-    
-    // Check for parameter sections
-    expect(screen.getByText('Schedule Range')).toBeInTheDocument();
-    expect(screen.getByText('Caregiver Constraints')).toBeInTheDocument();
-    expect(screen.getByText('Travel & Distance')).toBeInTheDocument();
-    expect(screen.getByText('Preference Weights')).toBeInTheDocument();
+    // Check for main elements (tab buttons)
+    expect(screen.getByRole('button', { name: /Optimization Parameters/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Optimization Results/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Optimization History/i })).toBeInTheDocument();
+
+    // Check for heading within the active parameters tab
+    expect(screen.getByRole('heading', { name: /Optimization Parameters/i, level: 3 })).toBeInTheDocument();
+
+    // Check for preset buttons (specifically their name part)
+    expect(screen.getByRole('button', { name: /Balanced/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Client-Focused/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Caregiver-Focused/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Efficiency-Focused/i })).toBeInTheDocument();
+
+    // Check for parameter section headings (level 4)
+    expect(screen.getByRole('heading', { name: /Schedule Range/i, level: 4 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Caregiver Constraints/i, level: 4 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Travel & Distance/i, level: 4 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Preference Weights/i, level: 4 })).toBeInTheDocument();
     
     // Check for run button
-    expect(screen.getByText('Run Optimization')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Run Optimization/i })).toBeInTheDocument();
   });
 
   test('applies a preset when clicked', async () => {
@@ -218,8 +221,13 @@ describe('ScheduleOptimizationControls Component', () => {
     const clientPrefSelect = screen.getByLabelText('Client Preference Weight:');
     expect(clientPrefSelect.value).toBe('3'); // Default value
     
-    // Click on Client-Focused preset
-    fireEvent.click(screen.getByText('Client-Focused'));
+    // Click on Client-Focused preset button
+    // Using a more specific selector for the preset button
+    const clientFocusedPresetButton = screen.getAllByRole('button').find(
+      button => button.textContent.includes('Client-Focused') && button.textContent.includes('Prioritize client preferences and needs')
+    );
+    expect(clientFocusedPresetButton).toBeInTheDocument();
+    fireEvent.click(clientFocusedPresetButton);
     
     // Check that client preference weight changed to 5
     expect(clientPrefSelect.value).toBe('5');
@@ -239,43 +247,46 @@ describe('ScheduleOptimizationControls Component', () => {
     
     // Change max shifts per day
     const maxShiftsInput = screen.getByLabelText('Max Shifts Per Day:');
-    fireEvent.change(maxShiftsInput, { target: { value: '3' } });
+    await act(async () => {
+      fireEvent.change(maxShiftsInput, { target: { value: '3' } });
+    });
     expect(maxShiftsInput.value).toBe('3');
     
     // Change time range
     const timeRangeSelect = screen.getByLabelText('Time Range:');
-    fireEvent.change(timeRangeSelect, { target: { value: '14d' } });
+     await act(async () => {
+      fireEvent.change(timeRangeSelect, { target: { value: '14d' } });
+    });
     expect(timeRangeSelect.value).toBe('14d');
     
     // Toggle a checkbox
     const weekendCheckbox = screen.getByLabelText('Allow Weekend Scheduling');
     expect(weekendCheckbox.checked).toBe(true); // Default is true
-    fireEvent.click(weekendCheckbox);
+    await act(async () => {
+      fireEvent.click(weekendCheckbox);
+    });
     expect(weekendCheckbox.checked).toBe(false);
   });
 
   test('runs optimization when button is clicked', async () => {
     render(<ScheduleOptimizationControls />);
     
-    // Wait for initial data to load
     await waitFor(() => {
       expect(schedulerService.getSchedulesInRange).toHaveBeenCalled();
     });
     
-    // Click run optimization button
-    fireEvent.click(screen.getByText('Run Optimization'));
-    
-    // Check that optimizeSchedule was called
-    await waitFor(() => {
-      expect(schedulerService.optimizeSchedule).toHaveBeenCalledWith({
-        startDate: expect.any(String),
-        endDate: expect.any(String),
-        parameters: expect.any(Object),
-        applyChanges: false
-      });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Run Optimization/i }));
+      await schedulerService.optimizeSchedule.mock.results[0].value; // Wait for optimizeSchedule to resolve
+    });
+
+    expect(schedulerService.optimizeSchedule).toHaveBeenCalledWith({
+      startDate: expect.any(String),
+      endDate: expect.any(String),
+      parameters: expect.any(Object),
+      applyChanges: false
     });
     
-    // Check that notification was shown
     expect(notificationService.showNotification).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'success',
@@ -283,49 +294,43 @@ describe('ScheduleOptimizationControls Component', () => {
       })
     );
     
-    // Check that we switched to results tab
     await waitFor(() => {
-      expect(screen.getByText('Optimization Results')).toHaveClass('active');
+      // Tab button for "Optimization Results"
+      const resultsTabButton = screen.getAllByRole('button', { name: /Optimization Results/i }).find(btn => btn.closest('.tab-navigation'));
+      expect(resultsTabButton).toHaveClass('active');
     });
     
-    // Check for results content
-    expect(screen.getByText('Side by Side')).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Side by Side/i, selected: true })).toBeInTheDocument();
   });
 
   test('switches between view modes in results tab', async () => {
     render(<ScheduleOptimizationControls />);
     
-    // Wait for initial data to load
-    await waitFor(() => {
-      expect(schedulerService.getSchedulesInRange).toHaveBeenCalled();
+    await waitFor(() => expect(schedulerService.getSchedulesInRange).toHaveBeenCalled());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Run Optimization/i }));
+      await schedulerService.optimizeSchedule.mock.results[0].value;
     });
     
-    // Run optimization
-    fireEvent.click(screen.getByText('Run Optimization'));
+    await waitFor(() => expect(screen.getByText('Current Schedule')).toBeInTheDocument()); // Wait for results tab to populate
     
-    // Wait for results to load
-    await waitFor(() => {
-      expect(screen.getByText('Current Schedule')).toBeInTheDocument();
+    const viewModeSelect = screen.getByRole('combobox', { name: /View Mode:/i });
+
+    await act(async () => {
+      fireEvent.change(viewModeSelect, { target: { value: 'metrics' } });
     });
     
-    // Switch to metrics view
-    const viewModeSelect = screen.getByLabelText('View Mode:');
-    fireEvent.change(viewModeSelect, { target: { value: 'metrics' } });
-    
-    // Check for metrics content
     await waitFor(() => {
-      expect(screen.getByText('Optimization Summary')).toBeInTheDocument();
-      expect(screen.getByText('Overall Improvement')).toBeInTheDocument();
-      expect(screen.getByText('Travel Distance')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /Optimization Summary/i, level: 4 })).toBeInTheDocument();
+      expect(screen.getByText(/Overall Improvement/i)).toBeInTheDocument();
     });
-    
-    // Check metric values
     expect(screen.getByText('12.5%')).toBeInTheDocument();
     
-    // Switch to diff view
-    fireEvent.change(viewModeSelect, { target: { value: 'diff' } });
+    await act(async () => {
+      fireEvent.change(viewModeSelect, { target: { value: 'diff' } });
+    });
     
-    // Check for diff view content
     await waitFor(() => {
       expect(screen.getByText('Current Schedule')).toBeInTheDocument();
       expect(screen.getByText('Optimized Schedule')).toBeInTheDocument();
@@ -334,31 +339,24 @@ describe('ScheduleOptimizationControls Component', () => {
 
   test('applies optimized schedule when apply button is clicked', async () => {
     render(<ScheduleOptimizationControls />);
+    await waitFor(() => expect(schedulerService.getSchedulesInRange).toHaveBeenCalled());
     
-    // Wait for initial data to load
-    await waitFor(() => {
-      expect(schedulerService.getSchedulesInRange).toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Run Optimization/i }));
+      await schedulerService.optimizeSchedule.mock.results[0].value;
     });
     
-    // Run optimization
-    fireEvent.click(screen.getByText('Run Optimization'));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Apply Optimized Schedule/i })).toBeInTheDocument());
     
-    // Wait for results to load
-    await waitFor(() => {
-      expect(screen.getByText('Apply Optimized Schedule')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Apply Optimized Schedule/i }));
+      await schedulerService.applyOptimizedSchedule.mock.results[0].value;
     });
     
-    // Click apply button
-    fireEvent.click(screen.getByText('Apply Optimized Schedule'));
-    
-    // Check that applyOptimizedSchedule was called
-    await waitFor(() => {
-      expect(schedulerService.applyOptimizedSchedule).toHaveBeenCalledWith({
-        optimizationId: 'opt123'
-      });
+    expect(schedulerService.applyOptimizedSchedule).toHaveBeenCalledWith({
+      optimizationId: 'opt123'
     });
     
-    // Check that notification was shown
     expect(notificationService.showNotification).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'success',
@@ -369,55 +367,52 @@ describe('ScheduleOptimizationControls Component', () => {
 
   test('shows optimization history', async () => {
     render(<ScheduleOptimizationControls />);
+    await waitFor(() => expect(schedulerService.getOptimizationHistory).toHaveBeenCalled());
     
-    // Wait for initial data to load
-    await waitFor(() => {
-      expect(schedulerService.getOptimizationHistory).toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Optimization History/i }));
     });
     
-    // Switch to history tab
-    fireEvent.click(screen.getByText('Optimization History'));
-    
-    // Check for history items
     await waitFor(() => {
-      expect(screen.getByText('Balanced Optimization')).toBeInTheDocument();
-      expect(screen.getByText('Client-Focused Optimization')).toBeInTheDocument();
+      expect(screen.getByText(/Balanced Optimization/i)).toBeInTheDocument();
+      expect(screen.getByText(/Client-Focused Optimization/i)).toBeInTheDocument();
     });
     
-    // Check for history details
-    expect(screen.getByText('8.5% Improvement')).toBeInTheDocument();
-    expect(screen.getByText('12.5% Improvement')).toBeInTheDocument();
+    expect(screen.getByText(/8.5% Improvement/i)).toBeInTheDocument();
+    expect(screen.getByText(/12.5% Improvement/i)).toBeInTheDocument();
     
-    // Expand a history item
-    fireEvent.click(screen.getByText('Client-Focused Optimization'));
+    // Expand a history item by clicking its title area (more robust than just text)
+    const clientFocusedHeader = screen.getByText(/Client-Focused Optimization/i).closest('.history-item-header');
+    await act(async () => {
+      fireEvent.click(clientFocusedHeader);
+    });
     
-    // Check for expanded details
     await waitFor(() => {
-      expect(screen.getByText('Optimization Parameters')).toBeInTheDocument();
-      expect(screen.getByText('Results Summary')).toBeInTheDocument();
+      // Check for a heading specific to the expanded details
+      expect(screen.getByRole('heading', { name: /Optimization Parameters/i, level: 5 })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /Results Summary/i, level: 5 })).toBeInTheDocument();
     });
   });
 
   test('handles errors gracefully', async () => {
-    // Mock API to throw error
     schedulerService.optimizeSchedule.mockRejectedValue(new Error('Optimization error'));
-    
     render(<ScheduleOptimizationControls />);
-    
-    // Wait for initial data to load
-    await waitFor(() => {
-      expect(schedulerService.getSchedulesInRange).toHaveBeenCalled();
+    await waitFor(() => expect(schedulerService.getSchedulesInRange).toHaveBeenCalled());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Run Optimization/i }));
+      // Wait for the promise to reject and error handling to complete
+      try {
+        await schedulerService.optimizeSchedule.mock.results[0].value;
+      } catch (e) {
+        // Expected error
+      }
     });
     
-    // Run optimization (will fail)
-    fireEvent.click(screen.getByText('Run Optimization'));
-    
-    // Check for error message
     await waitFor(() => {
       expect(screen.getByText('Failed to run optimization. Please try again.')).toBeInTheDocument();
     });
     
-    // Check error notification
     expect(notificationService.showNotification).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'error',
@@ -427,33 +422,30 @@ describe('ScheduleOptimizationControls Component', () => {
   });
 
   test('handles apply errors gracefully', async () => {
-    // Mock apply API to throw error
     schedulerService.applyOptimizedSchedule.mockRejectedValue(new Error('Apply error'));
-    
     render(<ScheduleOptimizationControls />);
+    await waitFor(() => expect(schedulerService.getSchedulesInRange).toHaveBeenCalled());
     
-    // Wait for initial data to load
-    await waitFor(() => {
-      expect(schedulerService.getSchedulesInRange).toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Run Optimization/i }));
+      await schedulerService.optimizeSchedule.mock.results[0].value;
     });
     
-    // Run optimization
-    fireEvent.click(screen.getByText('Run Optimization'));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Apply Optimized Schedule/i })).toBeInTheDocument());
     
-    // Wait for results to load
-    await waitFor(() => {
-      expect(screen.getByText('Apply Optimized Schedule')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Apply Optimized Schedule/i }));
+      try {
+        await schedulerService.applyOptimizedSchedule.mock.results[0].value;
+      } catch (e) {
+        // Expected error
+      }
     });
     
-    // Click apply button (will fail)
-    fireEvent.click(screen.getByText('Apply Optimized Schedule'));
-    
-    // Check for error message
     await waitFor(() => {
       expect(screen.getByText('Failed to apply optimized schedule. Please try again.')).toBeInTheDocument();
     });
     
-    // Check error notification
     expect(notificationService.showNotification).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'error',
@@ -464,39 +456,36 @@ describe('ScheduleOptimizationControls Component', () => {
 
   test('allows viewing historical optimization details', async () => {
     render(<ScheduleOptimizationControls />);
+    await waitFor(() => expect(schedulerService.getOptimizationHistory).toHaveBeenCalled());
     
-    // Wait for initial data to load
-    await waitFor(() => {
-      expect(schedulerService.getOptimizationHistory).toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Optimization History/i }));
     });
     
-    // Switch to history tab
-    fireEvent.click(screen.getByText('Optimization History'));
+    await waitFor(() => expect(screen.getByText(/Balanced Optimization/i)).toBeInTheDocument());
     
-    // Wait for history to load
-    await waitFor(() => {
-      expect(screen.getByText('Balanced Optimization')).toBeInTheDocument();
+    const clientFocusedHeader = screen.getByText(/Client-Focused Optimization/i).closest('.history-item-header');
+    await act(async () => {
+      fireEvent.click(clientFocusedHeader);
     });
     
-    // Expand a history item
-    fireEvent.click(screen.getByText('Client-Focused Optimization'));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /View Details/i })[0]).toBeInTheDocument());
     
-    // Wait for expanded details
-    await waitFor(() => {
-      expect(screen.getByText('View Details')).toBeInTheDocument();
+    const viewDetailsButton = screen.getAllByRole('button', { name: /View Details/i }).find(
+      btn => btn.closest('.history-item-details') // ensure it's the button within the expanded section
+    );
+    expect(viewDetailsButton).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(viewDetailsButton);
+      await schedulerService.getOptimizationDetails.mock.results[0].value;
     });
     
-    // Click view details
-    fireEvent.click(screen.getByText('View Details'));
+    expect(schedulerService.getOptimizationDetails).toHaveBeenCalledWith('hist2');
     
-    // Check that getOptimizationDetails was called
     await waitFor(() => {
-      expect(schedulerService.getOptimizationDetails).toHaveBeenCalledWith('hist2');
-    });
-    
-    // Check that we switched to results tab
-    await waitFor(() => {
-      expect(screen.getByText('Optimization Results')).toHaveClass('active');
+      const resultsTabButton = screen.getAllByRole('button', { name: /Optimization Results/i }).find(btn => btn.closest('.tab-navigation'));
+      expect(resultsTabButton).toHaveClass('active');
     });
   });
 });

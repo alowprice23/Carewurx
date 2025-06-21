@@ -77,10 +77,11 @@ class AnalysisDashboard {
       const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
       const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
       
-      const schedules = await window.electronAPI.getSchedulesInDateRange(
-        firstDay.toISOString().split('T')[0],
-        lastDay.toISOString().split('T')[0]
-      );
+      const startDate = firstDay.toISOString().split('T')[0];
+      const endDate = lastDay.toISOString().split('T')[0];
+      const schedules = await window.fetchAPI('/firebase/schedulesInDateRange', {
+        params: { startDate, endDate }
+      });
       
       if (schedules && schedules.length > 0) {
         this.calculateStats(schedules);
@@ -98,7 +99,7 @@ class AnalysisDashboard {
   async updateAgentMetrics() {
     try {
       // Get all opportunities
-      const opportunities = await window.electronAPI.getOpportunities({ limit: 100 });
+      const opportunities = await window.fetchAPI('/firebase/opportunities', { params: { limit: 100 } });
       
       if (opportunities && opportunities.length > 0) {
         this.agentMetrics.opportunitiesFound = opportunities.length;
@@ -152,10 +153,11 @@ class AnalysisDashboard {
       const oneWeekAgo = new Date(today);
       oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
       
-      const schedules = await window.electronAPI.getSchedulesInDateRange(
-        oneWeekAgo.toISOString().split('T')[0],
-        today.toISOString().split('T')[0]
-      );
+      const startDate = oneWeekAgo.toISOString().split('T')[0];
+      const endDate = today.toISOString().split('T')[0];
+      const schedules = await window.fetchAPI('/firebase/schedulesInDateRange', {
+        params: { startDate, endDate }
+      });
       
       // Analyze up to 3 schedules for insights
       this.insights = [];
@@ -165,8 +167,13 @@ class AnalysisDashboard {
         
         for (const schedule of schedulesToAnalyze) {
           try {
-            const scheduleInsights = await window.electronAPI.getAgentInsights(schedule.id);
-            if (scheduleInsights && scheduleInsights.insights) {
+            // Ensure schedule.id is valid before making the call
+            if (!schedule || !schedule.id) {
+                console.warn('Skipping agent insights for schedule with no ID:', schedule);
+                continue;
+            }
+            const scheduleInsights = await window.fetchAPI(`/agent/insights/${schedule.id}`);
+            if (scheduleInsights && scheduleInsights.insights) { // The API directly returns the insights object
               this.insights.push({
                 scheduleId: schedule.id,
                 clientName: schedule.client_name,

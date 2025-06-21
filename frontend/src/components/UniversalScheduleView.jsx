@@ -19,7 +19,8 @@ const UniversalScheduleView = () => {
   const [draggedSchedule, setDraggedSchedule] = useState(null);
 
   // Fetch schedules for the current date range
-  const fetchSchedules = useCallback(async () => {
+  const fetchSchedules = useCallback(async (isMountedChecker) => { // Pass isMounted checker
+    if (!isMountedChecker()) return; // Check before setting loading
     setLoading(true);
     try {
       const options = {
@@ -29,27 +30,39 @@ const UniversalScheduleView = () => {
       };
       
       const result = await universalScheduleService.getSchedules(options);
+      if (!isMountedChecker()) return; // Check after await
       setSchedules(result);
       
       // Check for conflicts
-      const conflictPromises = result.map(schedule => 
+      // Ensure result is an array before mapping
+      const conflictPromises = Array.isArray(result) ? result.map(schedule =>
         universalScheduleService.findConflicts(schedule.id)
-      );
+      ) : [];
       
       const conflictResults = await Promise.all(conflictPromises);
+      if (!isMountedChecker()) return; // Check after await
       const allConflicts = conflictResults.flat().filter(conflict => conflict);
       
       setConflicts(allConflicts);
     } catch (error) {
+      if (!isMountedChecker()) return; // Check in catch
       console.error('Error fetching schedules:', error);
     } finally {
+      if (!isMountedChecker()) return; // Check in finally
       setLoading(false);
     }
-  }, [dateRange]);
+  }, [dateRange]); // Removed universalScheduleService from dependencies as it's stable
 
   // Initialize component
   useEffect(() => {
-    fetchSchedules();
+    let isMounted = true;
+    const isMountedChecker = () => isMounted;
+
+    fetchSchedules(isMountedChecker); // Pass the checker
+
+    return () => {
+      isMounted = false; // Cleanup function
+    };
   }, [fetchSchedules]);
 
   // Handle date range change

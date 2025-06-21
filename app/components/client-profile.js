@@ -22,7 +22,8 @@ class ClientProfile {
    */
   async load(clientId) {
     try {
-      this.client = await window.electronAPI.getClient(clientId);
+      console.log(`Loading client profile for ${clientId} via API...`);
+      this.client = await window.fetchAPI(`/firebase/client/${clientId}`);
       this.render();
       
       // Initialize the calendar for this client

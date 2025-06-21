@@ -28,9 +28,11 @@ class CaregiverList {
    */
   async fetchCaregivers() {
     try {
-      this.caregivers = await window.electronAPI.getAllCaregivers();
+      console.log('Fetching all caregivers via API...');
+      this.caregivers = await window.fetchAPI('/firebase/caregivers');
     } catch (error) {
-      console.error('Error fetching caregivers:', error);
+      console.error('Error fetching caregivers via API:', error);
+      this.caregivers = []; // Ensure caregivers is an array on error
     }
   }
 

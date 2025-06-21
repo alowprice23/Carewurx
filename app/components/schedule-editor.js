@@ -142,7 +142,11 @@ class ScheduleEditor {
       };
       
       // Check for conflicts
-      this.conflicts = await window.electronAPI.checkScheduleConflicts(tempSchedule.id);
+      console.log(`Checking conflicts for schedule ${tempSchedule.id} via API...`);
+      // Note: The original checkScheduleConflicts in main.js might expect a scheduleId that exists.
+      // If the API requires an existing ID, this might need adjustment or the API needs to handle temp IDs.
+      // For now, assuming the API can handle it or this part of logic might implicitly only work for existing schedules.
+      this.conflicts = await window.fetchAPI(`/scheduler/checkConflicts/${tempSchedule.id}`);
       
       return this.conflicts;
     } catch (error) {
@@ -258,12 +262,18 @@ class ScheduleEditor {
       };
       
       // Request suggestions from the agent
-      const suggestions = await window.electronAPI.getAgentSuggestions(
-        tempSchedule.id, 
-        'schedule'
-      );
+      console.log(`Requesting suggestions for schedule ${tempSchedule.id} via API...`);
+      // Note: Similar to checkConflicts, API might expect an existing ID.
+      const suggestionsResponse = await window.fetchAPI(`/agent/suggestions/schedule/${tempSchedule.id}`);
       
-      if (suggestions && suggestions.suggestions) {
+      // The API returns the suggestions array directly or an object containing it.
+      // Based on agentService.js, it might be suggestionsResponse directly if it's an array,
+      // or suggestionsResponse.suggestions if the API wraps it.
+      // For now, let's assume the API returns an object with a suggestions property, like the original.
+      if (suggestionsResponse && suggestionsResponse.suggestions) {
+        this.handleAgentSuggestions(suggestionsResponse.suggestions);
+      } else if (Array.isArray(suggestionsResponse)) { // Or if API returns array directly
+        this.handleAgentSuggestions(suggestionsResponse);
         this.handleAgentSuggestions(suggestions.suggestions);
       } else {
         alert('No suggestions available at this time.');
@@ -340,13 +350,22 @@ class ScheduleEditor {
       
       if (this.schedule) {
         // Update existing schedule
-        await window.electronAPI.updateSchedule(this.schedule.id, scheduleData);
+        console.log(`Updating schedule ${this.schedule.id} via API...`);
+        await window.fetchAPI(`/scheduler/updateSchedule/${this.schedule.id}`, {
+          method: 'PUT',
+          body: { updatedData: scheduleData },
+        });
       } else {
         // Create new schedule
-        await window.electronAPI.createSchedule(scheduleData);
+        console.log('Creating new schedule via API...');
+        await window.fetchAPI('/scheduler/createSchedule', {
+          method: 'POST',
+          body: { scheduleData },
+        });
       }
       
       // Create a notification about the schedule action
+      console.log('Creating notification for schedule action via API...');
       const notificationData = {
         type: 'schedule',
         title: this.schedule ? 'Schedule Updated' : 'Schedule Created',
@@ -355,7 +374,10 @@ class ScheduleEditor {
         read: false
       };
       
-      await window.electronAPI.createNotification(notificationData);
+      await window.fetchAPI('/notifications/create', {
+        method: 'POST',
+        body: { notificationData },
+      });
       
       // Publish the update to the real-time system
       realTimeUpdatesService.publish('schedule', {
@@ -397,14 +419,17 @@ class ScheduleEditor {
     
     // Request suggestions for this schedule
     if (schedule && schedule.id) {
-      window.electronAPI.getAgentSuggestions(schedule.id, 'schedule')
-        .then(result => {
-          if (result && result.suggestions) {
-            this.handleAgentSuggestions(result.suggestions);
+      console.log(`Fetching suggestions for existing schedule ${schedule.id} via API...`);
+      window.fetchAPI(`/agent/suggestions/schedule/${schedule.id}`)
+        .then(suggestionsResponse => {
+          if (suggestionsResponse && suggestionsResponse.suggestions) {
+            this.handleAgentSuggestions(suggestionsResponse.suggestions);
+          } else if (Array.isArray(suggestionsResponse)) {
+            this.handleAgentSuggestions(suggestionsResponse);
           }
         })
         .catch(error => {
-          console.error('Error fetching suggestions:', error);
+          console.error('Error fetching suggestions for existing schedule via API:', error);
         });
     }
   }

@@ -22,7 +22,8 @@ class CaregiverProfile {
    */
   async load(caregiverId) {
     try {
-      this.caregiver = await window.electronAPI.getCaregiver(caregiverId);
+      console.log(`Loading caregiver profile for ${caregiverId} via API...`);
+      this.caregiver = await window.fetchAPI(`/firebase/caregiver/${caregiverId}`);
       this.render();
       
       // Initialize the calendar for this caregiver

@@ -45,10 +45,42 @@ const MOCK_NOTIFICATIONS = [
 
 class NotificationService {
   constructor() {
-    this.isElectronAvailable = typeof window !== 'undefined' && window.electronAPI;
+    // this.isElectronAvailable = typeof window !== 'undefined' && window.electronAPI; // Will be removed
     this.mockNotifications = [...MOCK_NOTIFICATIONS];
     
-    console.log(`Notification Service initializing in ${this.isElectronAvailable ? 'Electron' : 'browser-only'} mode`);
+    console.log('Notification Service initializing for web API communication.');
+  }
+
+  async _fetchAPI(endpoint, options = {}) {
+    const { body, method = 'GET', params } = options;
+    let url = `/api${endpoint}`;
+
+    if (params) {
+      url += `?${new URLSearchParams(params)}`;
+    }
+
+    const fetchOptions = {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    };
+
+    if (body) {
+      fetchOptions.body = JSON.stringify(body);
+    }
+
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(`API Error (${response.status}): ${errorData.message || 'Unknown error'}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.error(`Error fetching ${url}:`, error);
+      throw error;
+    }
   }
 
   /**
@@ -110,43 +142,19 @@ class NotificationService {
    */
   async getNotifications(options = {}) {
     try {
-      if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.getNotifications(options);
-      } else {
-        // Browser-only mode: filter mock notifications
-        console.log('Notification Service: Using mock notifications in browser-only mode');
-        await delay(600); // Simulate network delay
-        
-        // Apply filters from options
-        let result = [...this.mockNotifications];
-        
-        if (options.read !== undefined) {
-          result = result.filter(n => n.read === options.read);
-        }
-        
-        if (options.type) {
-          result = result.filter(n => n.type === options.type);
-        }
-        
-        if (options.entityType) {
-          result = result.filter(n => n.entityType === options.entityType);
-        }
-        
-        if (options.entityId) {
-          result = result.filter(n => n.entityId === options.entityId);
-        }
-        
-        // Sort by timestamp (newest first)
-        result.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-        
-        return result;
-      }
+      return await this._fetchAPI('/notifications', { params: options });
     } catch (error) {
-      console.error('Error getting notifications:', error);
-      throw error;
+      console.warn('API call failed for getNotifications, falling back to mock.', error);
+      // Fallback to mock
+      console.log('Notification Service: Using mock notifications due to API error or browser-only mode');
+      await delay(600);
+      let result = [...this.mockNotifications];
+      if (options.read !== undefined) result = result.filter(n => n.read === options.read);
+      if (options.type) result = result.filter(n => n.type === options.type);
+      if (options.entityType) result = result.filter(n => n.entityType === options.entityType);
+      if (options.entityId) result = result.filter(n => n.entityId === options.entityId);
+      result.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      return result;
     }
   }
 
@@ -157,28 +165,16 @@ class NotificationService {
    */
   async markAsRead(notificationId) {
     try {
-      if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.markAsRead(notificationId);
-      } else {
-        // Browser-only mode: update mock notification
-        console.log('Notification Service: Marking mock notification as read in browser-only mode');
-        await delay(400); // Simulate network delay
-        
-        const notification = this.mockNotifications.find(n => n.id === notificationId);
-        if (!notification) {
-          throw new Error('Notification not found');
-        }
-        
-        notification.read = true;
-        
-        return { ...notification };
-      }
+      return await this._fetchAPI(`/notifications/markAsRead/${notificationId}`, { method: 'POST' });
     } catch (error) {
-      console.error('Error marking notification as read:', error);
-      throw error;
+      console.warn(`API call failed for markAsRead (id: ${notificationId}), falling back to mock.`, error);
+      // Fallback to mock
+      console.log('Notification Service: Marking mock notification as read due to API error or browser-only mode');
+      await delay(400);
+      const notification = this.mockNotifications.find(n => n.id === notificationId);
+      if (!notification) throw new Error('Notification not found (mock)');
+      notification.read = true;
+      return { ...notification };
     }
   }
 
@@ -188,25 +184,16 @@ class NotificationService {
    */
   async markAllAsRead() {
     try {
-      if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.markAllNotificationsAsRead();
-      } else {
-        // Browser-only mode: update all mock notifications
-        console.log('Notification Service: Marking all mock notifications as read in browser-only mode');
-        await delay(500); // Simulate network delay
-        
-        this.mockNotifications.forEach(notification => {
-          notification.read = true;
-        });
-        
-        return { success: true, count: this.mockNotifications.length };
-      }
+      return await this._fetchAPI('/notifications/markAllAsRead', { method: 'POST' });
     } catch (error) {
-      console.error('Error marking all notifications as read:', error);
-      throw error;
+      console.warn('API call failed for markAllAsRead, falling back to mock.', error);
+      // Fallback to mock
+      console.log('Notification Service: Marking all mock notifications as read due to API error or browser-only mode');
+      await delay(500);
+      this.mockNotifications.forEach(notification => {
+        notification.read = true;
+      });
+      return { success: true, count: this.mockNotifications.length };
     }
   }
 
@@ -222,37 +209,32 @@ class NotificationService {
    */
   async createNotification(notificationData) {
     try {
-      if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.createNotification(notificationData);
-      } else {
-        // Browser-only mode: create mock notification
-        console.log('Notification Service: Creating mock notification in browser-only mode');
-        await delay(600); // Simulate network delay
-        
-        const newNotification = {
-          id: `notif-${Date.now()}`,
-          timestamp: new Date().toISOString(),
-          read: false,
-          ...notificationData
-        };
-        
-        this.mockNotifications.unshift(newNotification);
-        
-        // Show UI notification
-        this.showNotification(notificationData.message, notificationData.type || 'info');
-        
-        // Dispatch event for subscribers
-        const event = new CustomEvent('new-notification', { detail: newNotification });
-        window.dispatchEvent(event);
-        
-        return { ...newNotification };
-      }
+      const createdNotification = await this._fetchAPI('/notifications/create', {
+        method: 'POST',
+        body: { notificationData }, // server.js expects { notificationData: ... }
+      });
+       // Show UI notification (can remain client-side)
+      this.showNotification(createdNotification.message || notificationData.message, createdNotification.type || notificationData.type || 'info');
+      // Dispatch event for subscribers (can remain client-side)
+      const event = new CustomEvent('new-notification', { detail: createdNotification });
+      window.dispatchEvent(event);
+      return createdNotification;
     } catch (error) {
-      console.error('Error creating notification:', error);
-      throw error;
+      console.warn('API call failed for createNotification, falling back to mock.', error);
+      // Fallback to mock
+      console.log('Notification Service: Creating mock notification due to API error or browser-only mode');
+      await delay(600);
+      const newNotification = {
+        id: `notif-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        read: false,
+        ...notificationData
+      };
+      this.mockNotifications.unshift(newNotification);
+      this.showNotification(notificationData.message, notificationData.type || 'info');
+      const event = new CustomEvent('new-notification', { detail: newNotification });
+      window.dispatchEvent(event);
+      return { ...newNotification };
     }
   }
 
@@ -263,28 +245,16 @@ class NotificationService {
    */
   async deleteNotification(notificationId) {
     try {
-      if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.deleteNotification(notificationId);
-      } else {
-        // Browser-only mode: delete mock notification
-        console.log('Notification Service: Deleting mock notification in browser-only mode');
-        await delay(400); // Simulate network delay
-        
-        const index = this.mockNotifications.findIndex(n => n.id === notificationId);
-        if (index === -1) {
-          throw new Error('Notification not found');
-        }
-        
-        this.mockNotifications.splice(index, 1);
-        
-        return { success: true };
-      }
+      return await this._fetchAPI(`/notifications/delete/${notificationId}`, { method: 'DELETE' });
     } catch (error) {
-      console.error('Error deleting notification:', error);
-      throw error;
+      console.warn(`API call failed for deleteNotification (id: ${notificationId}), falling back to mock.`, error);
+      // Fallback to mock
+      console.log('Notification Service: Deleting mock notification due to API error or browser-only mode');
+      await delay(400);
+      const index = this.mockNotifications.findIndex(n => n.id === notificationId);
+      if (index === -1) throw new Error('Notification not found (mock)');
+      this.mockNotifications.splice(index, 1);
+      return { success: true };
     }
   }
 

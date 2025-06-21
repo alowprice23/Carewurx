@@ -114,6 +114,40 @@ function setupEventListeners(scheduleEditor, clientProfile, caregiverProfile) {
     }
   });
 
+// Helper function for API calls, now global
+window.fetchAPI = async function(endpoint, options = {}) {
+  const { body, method = 'GET', params } = options;
+  let url = `/api${endpoint}`; // Assuming API is served from the same origin
+
+  if (params) {
+    url += `?${new URLSearchParams(params)}`;
+  }
+
+  const fetchOptions = {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  };
+
+  if (body) {
+    fetchOptions.body = JSON.stringify(body);
+  }
+
+  try {
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: response.statusText }));
+      console.error(`API Error (${response.status}) in ${method} ${url}:`, errorData);
+      throw new Error(`API Error (${response.status}): ${errorData.message || 'Unknown error'}`);
+    }
+    return response.json();
+  } catch (error) {
+    console.error(`Error fetching ${url}:`, error);
+    throw error;
+  }
+}
+
   // Example: Handle a chat message submission
   const chatForm = document.getElementById('chat-form');
   if (chatForm) {
@@ -122,23 +156,37 @@ function setupEventListeners(scheduleEditor, clientProfile, caregiverProfile) {
       const chatInput = document.getElementById('chat-input');
       const message = chatInput.value.trim();
       if (message) {
-        // Send the message to the agent manager
-        const response = await window.electronAPI.processMessage('user123', message);
-        
-        // Display the response in the chat window
-        const chatMessages = document.getElementById('chat-messages');
-        const userMessageElement = document.createElement('div');
-        userMessageElement.className = 'chat-message user';
-        userMessageElement.innerHTML = `<span>${message}</span><span class="timestamp">${new Date().toLocaleTimeString()}</span>`;
-        chatMessages.appendChild(userMessageElement);
-        
-        const agentMessageElement = document.createElement('div');
-        agentMessageElement.className = 'chat-message agent';
-        agentMessageElement.innerHTML = `<span>${response.text}</span><span class="timestamp">${new Date().toLocaleTimeString()}</span>`;
-        chatMessages.appendChild(agentMessageElement);
-        
-        // Clear the input
-        chatInput.value = '';
+        try {
+          // Send the message to the agent manager via API
+          const response = await fetchAPI('/agent/processMessage', {
+            method: 'POST',
+            body: { userId: 'user123', message: message },
+          });
+
+          // Display the response in the chat window
+          const chatMessages = document.getElementById('chat-messages');
+          const userMessageElement = document.createElement('div');
+          userMessageElement.className = 'chat-message user';
+          userMessageElement.innerHTML = `<span>${message}</span><span class="timestamp">${new Date().toLocaleTimeString()}</span>`;
+          chatMessages.appendChild(userMessageElement);
+
+          const agentMessageElement = document.createElement('div');
+          agentMessageElement.className = 'chat-message agent';
+          // Ensure response.text exists, or provide a fallback
+          agentMessageElement.innerHTML = `<span>${response.text || response.message || 'Agent processing...'}</span><span class="timestamp">${new Date().toLocaleTimeString()}</span>`;
+          chatMessages.appendChild(agentMessageElement);
+
+          // Clear the input
+          chatInput.value = '';
+        } catch (error) {
+          console.error('Failed to send chat message or process response:', error);
+          // Optionally display an error to the user in the chat window
+          const chatMessages = document.getElementById('chat-messages');
+          const errorMessageElement = document.createElement('div');
+          errorMessageElement.className = 'chat-message error';
+          errorMessageElement.innerHTML = `<span>Error: Could not send message. ${error.message}</span><span class="timestamp">${new Date().toLocaleTimeString()}</span>`;
+          chatMessages.appendChild(errorMessageElement);
+        }
       }
     });
   }

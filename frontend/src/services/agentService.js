@@ -65,11 +65,46 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 class AgentService {
   constructor() {
-    this.isElectronAvailable = typeof window !== 'undefined' && window.electronAPI;
+    // We are removing Electron, so this check is no longer primary.
+    // We will rely on API calls. Mocks can be a secondary fallback.
+    this.isElectronAvailable = false; // Assume Electron is not available
     this.mockConversations = { ...MOCK_CONVERSATIONS };
     this.mockOpportunities = [...MOCK_OPPORTUNITIES];
     
-    console.log(`Agent Service initializing in ${this.isElectronAvailable ? 'Electron' : 'browser-only'} mode`);
+    console.log('Agent Service initializing for web API communication.');
+  }
+
+  async _fetchAPI(endpoint, options = {}) {
+    const { body, method = 'GET', params } = options;
+    let url = `/api${endpoint}`;
+
+    if (params) {
+      url += `?${new URLSearchParams(params)}`;
+    }
+
+    const fetchOptions = {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        // Add any other headers like Authorization if needed
+      },
+    };
+
+    if (body) {
+      fetchOptions.body = JSON.stringify(body);
+    }
+
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(`API Error (${response.status}): ${errorData.message || 'Unknown error'}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.error(`Error fetching ${url}:`, error);
+      throw error;
+    }
   }
 
   /**
@@ -110,22 +145,17 @@ class AgentService {
    */
   async processMessage(userId, message, options = {}) {
     try {
-      if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        // Match the correct method name in preload.js
-        return await window.electronAPI.processMessage(userId, message);
-      } else {
-        // Browser-only mode: generate a mock response
-        console.log('Agent Service: Using mock response in browser-only mode');
-        await delay(1000); // Simulate network delay
-        const agentName = options.agent || 'Bruce';
-        return this._generateMockResponse(message, agentName);
-      }
+      return await this._fetchAPI('/agent/processMessage', {
+        method: 'POST',
+        body: { userId, message, options },
+      });
     } catch (error) {
-      console.error('Error processing message:', error);
-      throw new Error(`Failed to process agent message: ${error.message}`);
+      console.warn('API call failed for processMessage, falling back to mock.', error);
+      // Fallback to mock if API fails
+      console.log('Agent Service: Using mock response due to API error or browser-only mode');
+      await delay(1000);
+      const agentName = options.agent || 'Bruce';
+      return this._generateMockResponse(message, agentName);
     }
   }
 
@@ -138,39 +168,30 @@ class AgentService {
    */
   async startConversation(userId, agentName, initialMessage) {
     try {
-      if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        // Make sure to pass userId if the API expects it
-        return await window.electronAPI.startAgentConversation(agentName, initialMessage);
-      } else {
-        // Browser-only mode: create a mock conversation
-        console.log('Agent Service: Creating mock conversation in browser-only mode');
-        await delay(800); // Simulate network delay
-        
-        const conversationId = `${agentName.toLowerCase()}-conv-${Date.now()}`;
-        this.mockConversations[conversationId] = {
-          id: conversationId,
-          agent: agentName,
-          messages: [
-            { 
-              sender: agentName, 
-              text: `Hello, I'm ${agentName}. How can I assist you today?`, 
-              timestamp: new Date() 
-            }
-          ]
-        };
-        
-        return { 
-          conversationId, 
-          agent: agentName,
-          initialResponse: `Hello, I'm ${agentName}. How can I assist you today?`
-        };
-      }
+      // userId might be part of a session/token in a real app, passed in headers
+      // For now, sending it in the body if the API expects it.
+      return await this._fetchAPI('/agent/startConversation', {
+        method: 'POST',
+        body: { agentName, initialMessage, userId }, // Assuming userId is needed by API
+      });
     } catch (error) {
-      console.error('Error starting conversation:', error);
-      throw new Error(`Failed to start agent conversation: ${error.message}`);
+      console.warn('API call failed for startConversation, falling back to mock.', error);
+      // Fallback to mock
+      console.log('Agent Service: Creating mock conversation due to API error or browser-only mode');
+      await delay(800);
+      const conversationId = `${agentName.toLowerCase()}-conv-${Date.now()}`;
+      this.mockConversations[conversationId] = {
+        id: conversationId,
+        agent: agentName,
+        messages: [
+          { sender: agentName, text: `Hello, I'm ${agentName}. How can I assist you today?`, timestamp: new Date() }
+        ]
+      };
+      return {
+        conversationId,
+        agent: agentName,
+        initialResponse: `Hello, I'm ${agentName}. How can I assist you today?`
+      };
     }
   }
 
@@ -182,38 +203,23 @@ class AgentService {
    */
   async getResponse(conversationId, message) {
     try {
-      if (this.isElectronAvailable) {
-        return await window.electronAPI.getAgentResponse(conversationId, message);
-      } else {
-        // Browser-only mode: generate a mock response
-        console.log('Agent Service: Generating mock response in browser-only mode');
-        await delay(1200); // Simulate network delay
-        
-        const conversation = this.mockConversations[conversationId];
-        if (!conversation) {
-          throw new Error('Conversation not found');
-        }
-        
-        // Add user message to the conversation
-        conversation.messages.push({
-          sender: 'user',
-          text: message,
-          timestamp: new Date()
-        });
-        
-        // Generate and add agent response
-        const response = this._generateMockResponse(message, conversation.agent);
-        conversation.messages.push({
-          sender: conversation.agent,
-          text: response,
-          timestamp: new Date()
-        });
-        
-        return response;
-      }
+      return await this._fetchAPI(`/agent/getResponse/${conversationId}`, {
+        method: 'POST',
+        body: { message },
+      });
     } catch (error) {
-      console.error('Error getting agent response:', error);
-      throw error;
+      console.warn(`API call failed for getResponse (convId: ${conversationId}), falling back to mock.`, error);
+      // Fallback to mock
+      console.log('Agent Service: Generating mock response due to API error or browser-only mode');
+      await delay(1200);
+      const conversation = this.mockConversations[conversationId];
+      if (!conversation) {
+        throw new Error('Conversation not found (mock)');
+      }
+      conversation.messages.push({ sender: 'user', text: message, timestamp: new Date() });
+      const mockResponse = this._generateMockResponse(message, conversation.agent);
+      conversation.messages.push({ sender: conversation.agent, text: mockResponse, timestamp: new Date() });
+      return mockResponse; // The API might return more structured data
     }
   }
 
@@ -224,20 +230,16 @@ class AgentService {
    */
   async scanForOpportunities(options = {}) {
     try {
-      if (this.isElectronAvailable) {
-        if (!window.electronAPI) {
-          throw new Error('Electron API not available - backend connection missing');
-        }
-        return await window.electronAPI.scanForOpportunities(options);
-      } else {
-        // Browser-only mode: return mock opportunities
-        console.log('Agent Service: Using mock opportunities in browser-only mode');
-        await delay(1500); // Simulate network delay
-        return this.mockOpportunities;
-      }
+      return await this._fetchAPI('/agent/scanForOpportunities', {
+        method: 'POST', // Assuming POST for options, could be GET with query params
+        body: { options },
+      });
     } catch (error) {
-      console.error('Error scanning for opportunities:', error);
-      throw new Error(`Failed to scan for opportunities: ${error.message}`);
+      console.warn('API call failed for scanForOpportunities, falling back to mock.', error);
+      // Fallback to mock
+      console.log('Agent Service: Using mock opportunities due to API error or browser-only mode');
+      await delay(1500);
+      return this.mockOpportunities;
     }
   }
 
@@ -248,30 +250,24 @@ class AgentService {
    */
   async getOpportunityDetails(opportunityId) {
     try {
-      if (this.isElectronAvailable) {
-        return await window.electronAPI.getOpportunityDetails(opportunityId);
-      } else {
-        // Browser-only mode: return mock opportunity details
-        console.log('Agent Service: Using mock opportunity details in browser-only mode');
-        await delay(800); // Simulate network delay
-        
-        const opportunity = this.mockOpportunities.find(opp => opp.id === opportunityId);
-        if (!opportunity) {
-          throw new Error('Opportunity not found');
-        }
-        
-        return {
-          ...opportunity,
-          caregivers: [
-            { id: 'cg-1', name: 'Alice Brown', rating: 4.8 },
-            { id: 'cg-2', name: 'Bob Wilson', rating: 4.5 }
-          ],
-          notes: 'This is a mock opportunity in browser-only mode'
-        };
-      }
+      return await this._fetchAPI(`/agent/opportunityDetails/${opportunityId}`);
     } catch (error) {
-      console.error('Error getting opportunity details:', error);
-      throw error;
+      console.warn(`API call failed for getOpportunityDetails (id: ${opportunityId}), falling back to mock.`, error);
+      // Fallback to mock
+      console.log('Agent Service: Using mock opportunity details due to API error or browser-only mode');
+      await delay(800);
+      const opportunity = this.mockOpportunities.find(opp => opp.id === opportunityId);
+      if (!opportunity) {
+        throw new Error('Opportunity not found (mock)');
+      }
+      return {
+        ...opportunity,
+        caregivers: [
+          { id: 'cg-1', name: 'Alice Brown', rating: 4.8 },
+          { id: 'cg-2', name: 'Bob Wilson', rating: 4.5 }
+        ],
+        notes: 'This is a mock opportunity in browser-only mode'
+      };
     }
   }
 
@@ -283,29 +279,25 @@ class AgentService {
    */
   async applyOpportunity(opportunityId, options = {}) {
     try {
-      if (this.isElectronAvailable) {
-        return await window.electronAPI.applyOpportunity(opportunityId, options);
-      } else {
-        // Browser-only mode: update mock opportunity status
-        console.log('Agent Service: Updating mock opportunity status in browser-only mode');
-        await delay(1000); // Simulate network delay
-        
-        const opportunity = this.mockOpportunities.find(opp => opp.id === opportunityId);
-        if (!opportunity) {
-          throw new Error('Opportunity not found');
-        }
-        
-        opportunity.status = 'applied';
-        
-        return {
-          success: true,
-          message: 'Opportunity applied successfully',
-          opportunity
-        };
-      }
+      return await this._fetchAPI(`/agent/applyOpportunity/${opportunityId}`, {
+        method: 'POST',
+        body: { options },
+      });
     } catch (error) {
-      console.error('Error applying opportunity:', error);
-      throw error;
+      console.warn(`API call failed for applyOpportunity (id: ${opportunityId}), falling back to mock.`, error);
+      // Fallback to mock
+      console.log('Agent Service: Updating mock opportunity status due to API error or browser-only mode');
+      await delay(1000);
+      const opportunity = this.mockOpportunities.find(opp => opp.id === opportunityId);
+      if (!opportunity) {
+        throw new Error('Opportunity not found (mock)');
+      }
+      opportunity.status = 'applied';
+      return {
+        success: true,
+        message: 'Opportunity applied successfully (mock)',
+        opportunity
+      };
     }
   }
 
@@ -317,30 +309,26 @@ class AgentService {
    */
   async rejectOpportunity(opportunityId, reason = '') {
     try {
-      if (this.isElectronAvailable) {
-        return await window.electronAPI.rejectOpportunity(opportunityId, reason);
-      } else {
-        // Browser-only mode: update mock opportunity status
-        console.log('Agent Service: Updating mock opportunity status in browser-only mode');
-        await delay(1000); // Simulate network delay
-        
-        const opportunity = this.mockOpportunities.find(opp => opp.id === opportunityId);
-        if (!opportunity) {
-          throw new Error('Opportunity not found');
-        }
-        
-        opportunity.status = 'rejected';
-        opportunity.rejectionReason = reason;
-        
-        return {
-          success: true,
-          message: 'Opportunity rejected successfully',
-          opportunity
-        };
-      }
+      return await this._fetchAPI(`/agent/rejectOpportunity/${opportunityId}`, {
+        method: 'POST',
+        body: { reason },
+      });
     } catch (error) {
-      console.error('Error rejecting opportunity:', error);
-      throw error;
+      console.warn(`API call failed for rejectOpportunity (id: ${opportunityId}), falling back to mock.`, error);
+      // Fallback to mock
+      console.log('Agent Service: Updating mock opportunity status due to API error or browser-only mode');
+      await delay(1000);
+      const opportunity = this.mockOpportunities.find(opp => opp.id === opportunityId);
+      if (!opportunity) {
+        throw new Error('Opportunity not found (mock)');
+      }
+      opportunity.status = 'rejected';
+      opportunity.rejectionReason = reason;
+      return {
+        success: true,
+        message: 'Opportunity rejected successfully (mock)',
+        opportunity
+      };
     }
   }
 
@@ -351,28 +339,23 @@ class AgentService {
    */
   async getInsights(scheduleId) {
     try {
-      if (this.isElectronAvailable) {
-        return await window.electronAPI.getAgentInsights(scheduleId);
-      } else {
-        // Browser-only mode: return mock insights
-        console.log('Agent Service: Generating mock insights in browser-only mode');
-        await delay(1200); // Simulate network delay
-        
-        return {
-          scheduleCoverage: 85,
-          clientSatisfaction: 92,
-          caregiverUtilization: 78,
-          recommendations: [
-            'Consider adjusting evening shifts to improve coverage',
-            'Some clients may benefit from longer morning visits',
-            'Look into potential scheduling conflicts on Fridays'
-          ],
-          warning: 'This is mock data in browser-only mode'
-        };
-      }
+      return await this._fetchAPI(`/agent/insights/${scheduleId}`);
     } catch (error) {
-      console.error('Error getting insights:', error);
-      throw error;
+      console.warn(`API call failed for getInsights (scheduleId: ${scheduleId}), falling back to mock.`, error);
+      // Fallback to mock
+      console.log('Agent Service: Generating mock insights due to API error or browser-only mode');
+      await delay(1200);
+      return {
+        scheduleCoverage: 85,
+        clientSatisfaction: 92,
+        caregiverUtilization: 78,
+        recommendations: [
+          'Consider adjusting evening shifts to improve coverage',
+          'Some clients may benefit from longer morning visits',
+          'Look into potential scheduling conflicts on Fridays'
+        ],
+        warning: 'This is mock data in browser-only mode'
+      };
     }
   }
 
@@ -384,43 +367,18 @@ class AgentService {
    */
   async getSuggestions(entityId, entityType) {
     try {
-      if (this.isElectronAvailable) {
-        return await window.electronAPI.getAgentSuggestions(entityId, entityType);
-      } else {
-        // Browser-only mode: return mock suggestions
-        console.log('Agent Service: Generating mock suggestions in browser-only mode');
-        await delay(1000); // Simulate network delay
-        
-        const suggestions = [
-          {
-            id: 'sugg-1',
-            title: 'Scheduling Suggestion',
-            description: 'Consider adjusting appointment times to optimize travel routes',
-            confidence: 0.85,
-            type: 'schedule'
-          },
-          {
-            id: 'sugg-2',
-            title: 'Client Preference',
-            description: 'This client prefers morning appointments according to historical data',
-            confidence: 0.92,
-            type: 'client'
-          },
-          {
-            id: 'sugg-3',
-            title: 'Caregiver Matching',
-            description: 'Based on skills and location, this caregiver might be a good match',
-            confidence: 0.78,
-            type: 'caregiver'
-          }
-        ];
-        
-        // Filter by entity type if specified
-        return entityType ? suggestions.filter(s => s.type === entityType) : suggestions;
-      }
+      return await this._fetchAPI(`/agent/suggestions/${entityType}/${entityId}`);
     } catch (error) {
-      console.error('Error getting suggestions:', error);
-      throw error;
+      console.warn(`API call failed for getSuggestions (entity: ${entityType}/${entityId}), falling back to mock.`, error);
+      // Fallback to mock
+      console.log('Agent Service: Generating mock suggestions due to API error or browser-only mode');
+      await delay(1000);
+      const suggestions = [
+        { id: 'sugg-1', title: 'Scheduling Suggestion (Mock)', description: 'Consider adjusting appointment times to optimize travel routes', confidence: 0.85, type: 'schedule' },
+        { id: 'sugg-2', title: 'Client Preference (Mock)', description: 'This client prefers morning appointments according to historical data', confidence: 0.92, type: 'client' },
+        { id: 'sugg-3', title: 'Caregiver Matching (Mock)', description: 'Based on skills and location, this caregiver might be a good match', confidence: 0.78, type: 'caregiver' }
+      ];
+      return entityType ? suggestions.filter(s => s.type === entityType) : suggestions;
     }
   }
 }

@@ -5,19 +5,53 @@
  */
 
 class UniversalScheduleService {
+  constructor() {
+    console.log('UniversalScheduleService initializing for web API communication.');
+  }
+
+  async _fetchAPI(endpoint, options = {}) {
+    const { body, method = 'GET', params } = options;
+    let url = `/api${endpoint}`;
+
+    if (params) {
+      url += `?${new URLSearchParams(params)}`;
+    }
+
+    const fetchOptions = {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    };
+
+    if (body) {
+      fetchOptions.body = JSON.stringify(body);
+    }
+
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(`API Error (${response.status}) in ${method} ${url}: ${errorData.message || 'Unknown error'}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.error(`Error fetching ${url}:`, error);
+      throw error;
+    }
+  }
+
   /**
    * Get schedules with optional filtering
-   * @param {Object} options - Filter options
-   * @param {Date} options.startDate - Start date range
-   * @param {Date} options.endDate - End date range
-   * @param {Array} options.include - Related entities to include
+   * @param {Object} options - Filter options (e.g., startDate, endDate, include)
    * @returns {Promise<Array>} - List of schedules
    */
   async getSchedules(options = {}) {
     try {
-      return await window.electronAPI.getCircularEntities('schedules', options);
+      // Maps to GET /api/firebase/circularEntities/schedules
+      return await this._fetchAPI('/firebase/circularEntities/schedules', { params: options });
     } catch (error) {
-      console.error('Error getting schedules:', error);
+      console.error('Error getting schedules via API:', error);
       throw error;
     }
   }
@@ -29,9 +63,10 @@ class UniversalScheduleService {
    */
   async getSchedule(scheduleId) {
     try {
-      return await window.electronAPI.getSchedule(scheduleId);
+      // Maps to GET /api/firebase/schedule/:scheduleId
+      return await this._fetchAPI(`/firebase/schedule/${scheduleId}`);
     } catch (error) {
-      console.error('Error getting schedule:', error);
+      console.error('Error getting schedule via API:', error);
       throw error;
     }
   }
@@ -39,15 +74,19 @@ class UniversalScheduleService {
   /**
    * Get schedules for a specific client
    * @param {string} clientId - Client ID
-   * @param {Date} startDate - Start date (optional)
-   * @param {Date} endDate - End date (optional)
+   * @param {Date | string} startDate - Start date (optional)
+   * @param {Date | string} endDate - End date (optional)
    * @returns {Promise<Array>} - List of schedules
    */
   async getClientSchedules(clientId, startDate = null, endDate = null) {
     try {
-      return await window.electronAPI.getSchedulesByClientId(clientId, startDate, endDate);
+      const params = {};
+      if (startDate) params.startDate = typeof startDate === 'string' ? startDate : startDate.toISOString();
+      if (endDate) params.endDate = typeof endDate === 'string' ? endDate : endDate.toISOString();
+      // Maps to GET /api/firebase/schedulesByClientId/:clientId
+      return await this._fetchAPI(`/firebase/schedulesByClientId/${clientId}`, { params });
     } catch (error) {
-      console.error('Error getting client schedules:', error);
+      console.error('Error getting client schedules via API:', error);
       throw error;
     }
   }
@@ -55,15 +94,19 @@ class UniversalScheduleService {
   /**
    * Get schedules for a specific caregiver
    * @param {string} caregiverId - Caregiver ID
-   * @param {Date} startDate - Start date (optional)
-   * @param {Date} endDate - End date (optional)
+   * @param {Date | string} startDate - Start date (optional)
+   * @param {Date | string} endDate - End date (optional)
    * @returns {Promise<Array>} - List of schedules
    */
   async getCaregiverSchedules(caregiverId, startDate = null, endDate = null) {
     try {
-      return await window.electronAPI.getSchedulesByCaregiverId(caregiverId, startDate, endDate);
+      const params = {};
+      if (startDate) params.startDate = typeof startDate === 'string' ? startDate : startDate.toISOString();
+      if (endDate) params.endDate = typeof endDate === 'string' ? endDate : endDate.toISOString();
+      // Maps to GET /api/firebase/schedulesByCaregiverId/:caregiverId
+      return await this._fetchAPI(`/firebase/schedulesByCaregiverId/${caregiverId}`, { params });
     } catch (error) {
-      console.error('Error getting caregiver schedules:', error);
+      console.error('Error getting caregiver schedules via API:', error);
       throw error;
     }
   }
@@ -76,9 +119,13 @@ class UniversalScheduleService {
    */
   async updateSchedule(scheduleId, changes) {
     try {
-      return await window.electronAPI.updateSchedule(scheduleId, changes);
+      // Maps to PUT /api/scheduler/updateSchedule/:scheduleId
+      return await this._fetchAPI(`/scheduler/updateSchedule/${scheduleId}`, {
+        method: 'PUT',
+        body: { updatedData: changes }, // server.js scheduler endpoint expects { updatedData: ... }
+      });
     } catch (error) {
-      console.error('Error updating schedule:', error);
+      console.error('Error updating schedule via API:', error);
       throw error;
     }
   }
@@ -90,9 +137,10 @@ class UniversalScheduleService {
    */
   async findConflicts(scheduleId) {
     try {
-      return await window.electronAPI.checkScheduleConflicts(scheduleId);
+      // Maps to GET /api/scheduler/checkConflicts/:scheduleId
+      return await this._fetchAPI(`/scheduler/checkConflicts/${scheduleId}`);
     } catch (error) {
-      console.error('Error finding conflicts:', error);
+      console.error('Error finding conflicts via API:', error);
       throw error;
     }
   }
@@ -104,9 +152,10 @@ class UniversalScheduleService {
    */
   async getCaregiverAvailability(caregiverId) {
     try {
-      return await window.electronAPI.getCaregiverAvailability(caregiverId);
+      // Maps to GET /api/firebase/caregiverAvailability/:caregiverId
+      return await this._fetchAPI(`/firebase/caregiverAvailability/${caregiverId}`);
     } catch (error) {
-      console.error('Error getting caregiver availability:', error);
+      console.error('Error getting caregiver availability via API:', error);
       throw error;
     }
   }
@@ -119,9 +168,13 @@ class UniversalScheduleService {
    */
   async updateCaregiverAvailability(caregiverId, availabilityData) {
     try {
-      return await window.electronAPI.updateCaregiverAvailability(caregiverId, availabilityData);
+      // Maps to PUT /api/firebase/caregiverAvailability/:caregiverId
+      return await this._fetchAPI(`/firebase/caregiverAvailability/${caregiverId}`, {
+        method: 'PUT',
+        body: availabilityData, // server.js firebase endpoint expects the data directly
+      });
     } catch (error) {
-      console.error('Error updating caregiver availability:', error);
+      console.error('Error updating caregiver availability via API:', error);
       throw error;
     }
   }
@@ -133,9 +186,13 @@ class UniversalScheduleService {
    */
   async createSchedule(scheduleData) {
     try {
-      return await window.electronAPI.createSchedule(scheduleData);
+      // Maps to POST /api/scheduler/createSchedule
+      return await this._fetchAPI('/scheduler/createSchedule', {
+        method: 'POST',
+        body: { scheduleData }, // server.js scheduler endpoint expects { scheduleData: ... }
+      });
     } catch (error) {
-      console.error('Error creating schedule:', error);
+      console.error('Error creating schedule via API:', error);
       throw error;
     }
   }
@@ -147,9 +204,10 @@ class UniversalScheduleService {
    */
   async deleteSchedule(scheduleId) {
     try {
-      return await window.electronAPI.deleteSchedule(scheduleId);
+      // Maps to DELETE /api/scheduler/deleteSchedule/:scheduleId
+      return await this._fetchAPI(`/scheduler/deleteSchedule/${scheduleId}`, { method: 'DELETE' });
     } catch (error) {
-      console.error('Error deleting schedule:', error);
+      console.error('Error deleting schedule via API:', error);
       throw error;
     }
   }
@@ -161,9 +219,10 @@ class UniversalScheduleService {
    */
   async getScheduleWithDetails(scheduleId) {
     try {
-      return await window.electronAPI.getScheduleWithDetails(scheduleId);
+      // Maps to GET /api/scheduler/scheduleWithDetails/:scheduleId
+      return await this._fetchAPI(`/scheduler/scheduleWithDetails/${scheduleId}`);
     } catch (error) {
-      console.error('Error getting schedule details:', error);
+      console.error('Error getting schedule details via API:', error);
       throw error;
     }
   }
@@ -175,9 +234,10 @@ class UniversalScheduleService {
    */
   async findBestCaregiver(scheduleId) {
     try {
-      return await window.electronAPI.findBestCaregiver(scheduleId);
+      // Maps to GET /api/scheduler/findBestCaregiver/:scheduleId
+      return await this._fetchAPI(`/scheduler/findBestCaregiver/${scheduleId}`);
     } catch (error) {
-      console.error('Error finding best caregiver:', error);
+      console.error('Error finding best caregiver via API:', error);
       throw error;
     }
   }
@@ -189,9 +249,13 @@ class UniversalScheduleService {
    */
   async optimizeSchedules(date) {
     try {
-      return await window.electronAPI.optimizeSchedules(date);
+      // Maps to POST /api/scheduler/optimizeSchedules
+      return await this._fetchAPI('/scheduler/optimizeSchedules', {
+        method: 'POST',
+        body: { date }, // server.js expects { date: ... }
+      });
     } catch (error) {
-      console.error('Error optimizing schedules:', error);
+      console.error('Error optimizing schedules via API:', error);
       throw error;
     }
   }

@@ -47,9 +47,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function fetchUsers() {
         try {
             userListElement.innerHTML = '<li style="text-align: center; padding: 20px;">Loading users...</li>';
-            console.log('Fetching users list...');
-            const users = await window.electronAPI.listAllUsers();
-            console.log('Users fetched:', users);
+            console.log('Fetching users list via API...');
+            // Assuming an endpoint like /api/admin/users for listing users
+            const users = await window.fetchAPI('/admin/users');
+            console.log('Users fetched via API:', users);
             displayUsers(users);
         } catch (error) {
             console.error("Error fetching users:", error);
@@ -121,17 +122,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             button.textContent = 'Deleting...';
             
             console.log('Deleting user:', uid);
-            const result = await window.electronAPI.deleteUser(uid);
+            // Assuming an endpoint like /api/admin/user/:uid for deleting
+            const result = await window.fetchAPI(`/admin/user/${uid}`, { method: 'DELETE' });
             
-            if (result.success) {
-                console.log('User deleted successfully');
+            if (result.success) { // Ensure your API returns a { success: true } or similar
+                console.log('User deleted successfully via API');
                 showSuccessMessage(`User ${userEmail} has been permanently deleted.`);
-                
-                // Remove the user from the list
                 button.closest('li').remove();
             } else {
-                console.error('Error deleting user:', result.error);
-                showAdminError('Failed to delete user: ' + result.error);
+                console.error('Error deleting user via API:', result.error || 'Unknown error from API');
+                showAdminError('Failed to delete user: ' + (result.error || 'Unknown error from API'));
                 button.disabled = false;
                 button.textContent = 'Delete';
             }
@@ -151,10 +151,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             button.disabled = true;
             button.textContent = 'Processing...';
             
-            console.log('Approving user:', uid);
-            await window.electronAPI.setUserApproval(uid, true);
+            console.log('Approving user via API:', uid);
+            // Assuming an endpoint like /api/admin/user/:uid/approval for setting approval
+            await window.fetchAPI(`/admin/user/${uid}/approval`, { method: 'POST', body: { approved: true } });
             
-            console.log('User approved successfully');
+            console.log('User approved successfully via API');
             button.textContent = 'Approved ✓';
             showSuccessMessage('User approved successfully!');
             
@@ -179,10 +180,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             button.disabled = true;
             button.textContent = 'Processing...';
             
-            console.log('Denying user:', uid);
-            await window.electronAPI.setUserApproval(uid, false);
+            console.log('Denying user via API:', uid);
+            // Assuming an endpoint like /api/admin/user/:uid/approval for setting approval
+            await window.fetchAPI(`/admin/user/${uid}/approval`, { method: 'POST', body: { approved: false } });
             
-            console.log('User access denied');
+            console.log('User access denied via API');
             button.textContent = 'Denied ✗';
             showSuccessMessage('User access denied successfully.');
             
@@ -217,10 +219,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         logoutBtn.addEventListener('click', async () => {
             try {
-                await window.electronAPI.logout();
-                window.location.href = 'index.html';
+                // Maps to /api/auth/signOut
+                await window.fetchAPI('/auth/signOut', { method: 'POST' });
+                window.location.href = 'index.html'; // Redirect to home/login page
             } catch (error) {
-                console.error('Logout error:', error);
+                console.error('Logout error via API:', error);
                 showAdminError('Failed to logout: ' + error.message);
             }
         });
@@ -246,13 +249,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         userListElement.appendChild(backBtn);
     }
     
-    // Check if user is admin directly through IPC
+    // Check if user is admin via API
     try {
-        console.log('Checking current user...');
-        const currentUser = await window.electronAPI.getCurrentUser();
-        console.log('Current user:', currentUser);
+        console.log('Checking current user via API...');
+        // Maps to /api/auth/currentUser
+        const currentUser = await window.fetchAPI('/auth/currentUser');
+        console.log('Current user via API:', currentUser);
         
-        if (!currentUser) {
+        if (!currentUser || !currentUser.uid) { // Check for a valid user object
             console.log('No user is currently logged in');
             showAdminError('You must be logged in as admin to view this page.');
             showLoginButton();
