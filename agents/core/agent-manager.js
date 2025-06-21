@@ -32,6 +32,78 @@ class AgentManager {
   }
 
   /**
+   * Analyzes unmet shifts and caregiver data to identify potential shortages.
+   * This is a simplified initial version.
+   *
+   * @param {Array<Object>} unmetShifts - Array of shift objects that could not be filled.
+   *   Each shift: { clientId, clientName, date, startTime, endTime, requiredSkills, location }
+   * @param {Array<Object>} allCaregivers - Array of all caregiver profiles (with skills, availability etc.)
+   * @returns {Promise<Array<Object>>} - An array of shortage alert opportunity objects.
+   */
+  async identifyAndReportShortages(unmetShifts, allCaregivers) {
+    if (!unmetShifts || unmetShifts.length === 0) {
+      return []; // No unmet shifts, no shortages to report from this batch.
+    }
+
+    console.log(`Identifying shortages from ${unmetShifts.length} unmet shifts.`);
+    const shortageAlerts = [];
+
+    // Example: Group unmet shifts by date and required skills to identify patterns
+    const unmetByDateAndSkills = {};
+
+    for (const shift of unmetShifts) {
+      const key = `${shift.date}_${(shift.requiredSkills || []).sort().join('-') || 'any-skill'}`;
+      if (!unmetByDateAndSkills[key]) {
+        unmetByDateAndSkills[key] = {
+          date: shift.date,
+          requiredSkills: shift.requiredSkills || [],
+          count: 0,
+          shifts: []
+        };
+      }
+      unmetByDateAndSkills[key].count++;
+      unmetByDateAndSkills[key].shifts.push({
+        clientId: shift.clientId,
+        clientName: shift.clientName,
+        startTime: shift.startTime,
+        endTime: shift.endTime,
+        location: shift.location // Assuming location might have region/zip
+      });
+    }
+
+    for (const key in unmetByDateAndSkills) {
+      const group = unmetByDateAndSkills[key];
+      // Here, more sophisticated analysis could be done:
+      // - Check if any *available* caregivers (not maxed out) had the skills but not the time.
+      // - Check if caregivers with skills were maxed out.
+      // - Aggregate by region if location data allows.
+
+      const summaryMessage = `Potential shortage of ${group.count} shift(s) on ${group.date} requiring skills: ${group.requiredSkills.join(', ') || 'general care'}. Affected clients include ${group.shifts.slice(0,2).map(s=>s.clientName).join(', ')}.`;
+
+      const shortageOpportunity = {
+        id: `opp-shortage-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        type: 'caregiver_shortage_alert',
+        date: group.date, // Date of the shortage
+        required_skills: group.requiredSkills,
+        number_of_shifts_affected: group.count,
+        affected_clients_sample: group.shifts.slice(0, 3).map(s => ({clientName: s.clientName, time: `${s.startTime}-${s.endTime}` })),
+        // TODO: Add region/location if available and aggregated
+        summary: summaryMessage,
+        details: `On ${group.date}, ${group.count} shifts requiring skills '${group.requiredSkills.join(', ') || 'general care'}' could not be filled. Further analysis needed to pinpoint exact cause (e.g., lack of available time slots from skilled caregivers, or absolute lack of skilled caregivers).`,
+        created_at: new Date().toISOString(),
+        status: 'pending_review', // Or 'active_alert'
+        priority: group.count > 2 ? 'high' : 'medium', // Example priority
+      };
+
+      shortageAlerts.push(shortageOpportunity);
+      await firebaseService.addDocument('opportunities', shortageOpportunity);
+      console.log('Generated shortage alert:', shortageOpportunity.summary);
+    }
+
+    return shortageAlerts;
+  }
+
+  /**
    * Initialize the agent manager
    */
   async initialize() {
@@ -314,40 +386,104 @@ class AgentManager {
 
     const { task_id, optimization_criteria, scope } = parameters;
 
-    if (!task_id || !optimization_criteria || !scope) {
-      throw new Error('Missing required parameters (task_id, optimization_criteria, scope) for initiating optimization task.');
+    if (!task_id || !optimization_criteria || !scope || !scope.date_range_start || !scope.date_range_end) {
+      throw new Error('Missing required parameters (task_id, optimization_criteria, scope with date_range_start/end) for initiating optimization task.');
     }
 
-    if (this.activeOptimizationTasks.has(task_id)) {
-      // This could mean the LLM is trying to re-initiate an existing task or task_id collision
-      console.warn(`Optimization task ${task_id} already exists. Possible re-initiation.`);
-      // Depending on desired behavior, could either throw error, or update existing, or ignore.
-      // For now, let's allow re-initiation to update params.
+    if (this.activeOptimizationTasks.has(task_id) && this.activeOptimizationTasks.get(task_id).status === 'processing') {
+        return {
+            success: false,
+            task_id,
+            status: 'already_processing',
+            message: `Optimization task ${task_id} is already in progress. Please wait for it to complete.`
+        };
     }
 
     const taskDetails = {
       ...parameters,
       userId,
-      status: 'pending_analysis', // Initial status
+      status: 'processing', // Mark as processing
       startTime: new Date().toISOString(),
-      conversationSnapshot: this.getConversationHistory(userId, true).slice(-5) // Snapshot of recent conversation
+      conversationSnapshot: this.getConversationHistory(userId, true).slice(-5)
     };
-
     this.activeOptimizationTasks.set(task_id, taskDetails);
 
-    // In a real scenario, this might trigger an async background process.
-    // For now, it just acknowledges. The agent's response should reflect this.
-    const confirmationMessage = `Okay, I've started the schedule optimization task (ID: ${task_id}) for ${scope.date_range_start} to ${scope.date_range_end} focusing on ${optimization_criteria.join(', ')}. I'll analyze this and let you know.`;
+    console.log(`Optimization task ${task_id} started. Fetching data...`);
 
-    console.log(`Optimization task ${task_id} stored. Current active tasks: ${this.activeOptimizationTasks.size}`);
+    try {
+      // 1. Fetch caregivers and their full availability
+      const allCaregiversRaw = await firebaseService.getAllCaregivers();
+      const allCaregiversWithAvailability = await Promise.all(
+        allCaregiversRaw.map(async (cg) => {
+          const availabilityData = await firebaseService.getCaregiverAvailability(cg.id);
+          return { ...cg, availabilityData: availabilityData || {} }; // Ensure availabilityData is at least an empty object
+        })
+      );
 
-    // This handler's return value might be used by the agent to form its next response.
-    return {
-      success: true,
-      task_id,
-      status: 'initiated',
-      message: confirmationMessage // Agent can use this message
-    };
+      // 2. Fetch unassigned schedules within the scope as the primary shifts to fill
+      // This is a simplification. A more advanced approach might generate all potential shifts
+      // from client.authorized_weekly_hours.
+      const unassignedSchedulesInRange = await firebaseService.getSchedulesInDateRange(scope.date_range_start, scope.date_range_end);
+      const clientShiftsToFill = unassignedSchedulesInRange
+        .filter(s => s.status === 'unassigned')
+        .map(s => {
+            const clientDetails = firebaseService.getClient(s.client_id); // Assuming this is fast/cached or batch it
+            return {
+                id: s.id, // Using schedule ID as the unique shift ID
+                clientId: s.client_id,
+                clientName: s.client_name, // Already on schedule doc
+                date: s.date,
+                startTime: s.start_time,
+                endTime: s.end_time,
+                durationHours: enhancedScheduler.timeToMinutes(s.end_time) && enhancedScheduler.timeToMinutes(s.start_time) ? (enhancedScheduler.timeToMinutes(s.end_time) - enhancedScheduler.timeToMinutes(s.start_time)) / 60 : 0,
+                requiredSkills: s.required_skills || (clientDetails?.required_skills || []),
+                location: s.client_location || clientDetails?.location,
+                clientBusLineAccess: clientDetails?.bus_line_access || false
+                // Ensure clientBusLineAccess is fetched; might need to get all clients first if not on schedule doc
+            };
+        });
+
+      if (clientShiftsToFill.length === 0) {
+        this.activeOptimizationTasks.set(task_id, { ...taskDetails, status: 'completed_no_shifts', endTime: new Date().toISOString() });
+        return {
+          success: true,
+          task_id,
+          status: 'completed_no_shifts',
+          message: 'No unassigned shifts found in the specified date range to optimize.',
+          results: { assignments: [], unmetShifts: [], optimization_summary: { totalShiftsToFill: 0 } }
+        };
+      }
+
+      // 3. Call the optimization algorithm
+      const optimizationResult = await enhancedScheduler.optimizeSchedules(
+        clientShiftsToFill,
+        allCaregiversWithAvailability,
+        { primaryGoal: optimization_criteria.includes('maximizeCoverageFewestCaregivers') ? 'maximizeCoverageFewestCaregivers' : 'maximizeCoverage' } // Example mapping
+      );
+
+      // 4. Identify and report shortages if any shifts are unmet
+      let shortageAlerts = [];
+      if (optimizationResult.unmetShifts && optimizationResult.unmetShifts.length > 0) {
+        shortageAlerts = await this.identifyAndReportShortages(optimizationResult.unmetShifts, allCaregiversWithAvailability);
+      }
+
+      this.activeOptimizationTasks.set(task_id, { ...taskDetails, status: 'completed', endTime: new Date().toISOString(), results: optimizationResult, shortages: shortageAlerts });
+
+      console.log(`Optimization task ${task_id} completed.`);
+      return {
+        success: true,
+        task_id,
+        status: 'completed',
+        message: `Optimization analysis complete. ${optimizationResult.optimization_summary.shiftsAssigned} shifts assigned, ${optimizationResult.optimization_summary.shiftsUnmet} unmet. ${shortageAlerts.length} shortage alerts created.`,
+        results: optimizationResult,
+        shortage_alerts_summary: shortageAlerts.map(s => s.summary)
+      };
+
+    } catch (error) {
+      console.error(`Error during optimization task ${task_id}:`, error);
+      this.activeOptimizationTasks.set(task_id, { ...taskDetails, status: 'failed', endTime: new Date().toISOString(), error: error.message });
+      throw error; // Re-throw for the agent to handle
+    }
   }
 
   /**
@@ -547,7 +683,7 @@ class AgentManager {
    */
   async scanForOpportunities(scanOptions = {}) {
     console.log('Scanning for scheduling opportunities...', scanOptions);
-    const opportunities = [];
+    const opportunities = []; // This will collect all types of opportunities
     const defaultWeeklyTargetHours = 30; // Default target hours for caregivers
 
     try {
@@ -725,9 +861,41 @@ class AgentManager {
       
       // 4. Placeholder for Efficiency Opportunities (can be expanded later)
       console.log('Phase 4: Identifying efficiency opportunities (basic)...');
-      const efficiencyOpportunities = await this.identifyEfficiencyOpportunities(unassignedSchedules, allCaregivers, allClients);
-      opportunities.push(...efficiencyOpportunities); // Will also save to DB inside the method
-      console.log(`Phase 4: Found ${efficiencyOpportunities.length} efficiency opportunities.`);
+      const efficiencyOps = await this.identifyEfficiencyOpportunities(unassignedSchedules, allCaregivers, allClients);
+      opportunities.push(...efficiencyOps);
+      console.log(`Phase 4: Found ${efficiencyOps.length} efficiency opportunities.`);
+
+      // Phase 5: After attempting to fill/optimize, identify remaining shortages explicitly
+      // This is a conceptual placement. In a real flow, optimizeSchedules would be called,
+      // and its unmetShifts output would feed into identifyAndReportShortages.
+      // For now, if scanForOpportunities is the primary way to find issues,
+      // we can call it based on the currently unassigned shifts.
+      console.log('Phase 5: Identifying shortages from remaining unassigned shifts...');
+      // Re-fetch unassignedSchedules if they might have changed during prior opportunity creation
+      const currentUnassignedSchedules = await firebaseService.db.collection('schedules')
+        .where('status', '==', 'unassigned')
+        .get()
+        .then(snapshot => snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
+      if (currentUnassignedSchedules.length > 0) {
+        // Convert these unassigned schedules into the 'unmetShift' format expected by identifyAndReportShortages
+        const unmetShiftObjects = currentUnassignedSchedules.map(s => ({
+            id: s.id, // Use schedule id as shift id for this context
+            clientId: s.client_id,
+            clientName: s.client_name,
+            date: s.date,
+            startTime: s.start_time,
+            endTime: s.end_time,
+            durationHours: enhancedScheduler.timeToMinutes(s.end_time) && enhancedScheduler.timeToMinutes(s.start_time) ? (enhancedScheduler.timeToMinutes(s.end_time) - enhancedScheduler.timeToMinutes(s.start_time)) / 60 : 0,
+            requiredSkills: s.required_skills || [], // Assuming schedules might have this
+            location: s.client_location, // Assuming schedules have this
+            clientBusLineAccess: allClients.find(c=>c.id === s.client_id)?.bus_line_access || false // Fetch if needed
+        }));
+        const shortageAlertOps = await this.identifyAndReportShortages(unmetShiftObjects, allCaregivers);
+        opportunities.push(...shortageAlertOps);
+        console.log(`Phase 5: Found ${shortageAlertOps.length} shortage alert opportunities.`);
+      }
+
 
       console.log(`Total opportunities found: ${opportunities.length}`);
       return opportunities;

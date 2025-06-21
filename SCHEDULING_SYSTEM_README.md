@@ -197,3 +197,41 @@ When determining if a caregiver is available for a specific date and time, the s
 4.  If none of the above conditions make the caregiver available, they are considered UNAVAILABLE for the requested time.
 
 This model allows for flexible definition of caregiver availability, accommodating both highly structured schedules and more general availability patterns.
+
+## Client Profile Fields for Optimization
+
+For the scheduling optimization system to work effectively, client profiles (stored in the `clients` collection) should ideally contain the following fields, in addition to standard contact and care information:
+
+*   **`name`** (String): Client's name.
+*   **`location`** (Object): Client's address, geocoordinates.
+    *   Example: `{ "address": "123 Main St, Anytown, USA", "latitude": 34.0522, "longitude": -118.2437 }`
+*   **`required_skills`** (Array of Strings): Specific skills needed for this client (e.g., `["Dementia Care", "Medication Reminder"]`).
+*   **`preferences`** (Object, Optional): Client preferences.
+    *   `preferred_caregivers` (Array of Strings): List of caregiver IDs the client prefers.
+    *   `blocked_caregivers` (Array of Strings): List of caregiver IDs the client wishes to avoid.
+*   **`authorized_weekly_hours`** (Number): Total number of care hours authorized for the client per week. This is a key input for 100% coverage goal.
+*   **`bus_line_access`** (Boolean): `true` if the client's location is easily accessible via public transportation, `false` otherwise.
+*   **`required_shift_details_notes`** (String, Optional): Textual notes describing specific, non-negotiable shift structures or patterns if they cannot be easily broken down from `authorized_weekly_hours`. E.g., "Needs 2-hour morning shift daily (approx 8-10 AM) and 1-hour evening check-in (approx 6-7 PM)". The optimization algorithm will primarily work off `authorized_weekly_hours` and try to create efficient schedules; these notes can guide human review or agent suggestions if specific pre-defined shifts are not already in the `schedules` collection as 'unassigned'.
+*   **`status`** (String): Current status of the client, e.g., `'active_needs_assessment'`, `'active_receiving_care'`, `'inactive'`, `'pending_start'`. Used to identify clients who are currently candidates for scheduling.
+*   **`additional_notes`** (String, Optional): Any other relevant notes for scheduling or care.
+
+## Caregiver Profile Fields for Optimization
+
+Caregiver profiles (stored in the `caregivers` collection) should contain the following fields relevant to optimization, in addition to their personal and professional details:
+
+*   **`name`** (String): Caregiver's name.
+*   **`location`** (Object, Optional): Caregiver's home base location, for travel calculations.
+    *   Example: `{ "address": "456 Oak Ave, Anytown, USA", "latitude": 34.0522, "longitude": -118.2437 }`
+*   **`skills`** (Array of Strings): Skills the caregiver possesses (e.g., `["Companionship", "Hoyer Lift Certified"]`).
+*   **`availability`**: (Object) Detailed availability structure, stored in the `caregiver_availability/{caregiverId}` document. (See "Caregiver Availability Data Model" section above).
+*   **`drives_car`** (Boolean): `true` if the caregiver has a car and is willing to use it for work, `false` otherwise.
+*   **`max_days_per_week`** (Number): Maximum number of days this caregiver is willing to work per week (e.g., 5).
+*   **`max_hours_per_week`** (Number): Absolute maximum number of hours this caregiver can work per week (e.g., 40 or 45).
+*   **`target_weekly_hours`** (Number, Optional): The caregiver's preferred or target number of weekly hours. Used to identify opportunities to increase hours if they are below this target.
+*   **`employment_type`** (String): E.g., `'part-time'` (<=24 hours/week), `'full-time'` (>24 and <=45 hours/week), `'contractor'`.
+*   **`can_work_simultaneous_clients_nearby`** (Boolean, Default: `false`): Indicates if the caregiver is willing and able to cover two clients simultaneously under very strict conditions (last resort for coverage, clients very close).
+*   **`max_simultaneous_travel_miles`** (Number, Default: 5): If `can_work_simultaneous_clients_nearby` is true, this is the maximum permissible distance in miles between the two clients.
+*   **`preferences`** (Object, Optional): Caregiver preferences.
+    *   `preferred_client_tags` (Array of Strings): E.g., `["non-smoker", "pets_ok"]`.
+    *   `max_travel_time_per_shift_minutes` (Number, Optional): Maximum travel time they are willing to spend for a single shift.
+*   **`status`** (String): E.g., `'active'`, `'on_leave'`, `'inactive'`.

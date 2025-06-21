@@ -240,4 +240,140 @@ describe('EnhancedScheduler Service', () => {
     });
 
   });
+
+  describe('optimizeSchedules', () => {
+    let mockClientShifts;
+    let mockCaregivers;
+
+    beforeEach(() => {
+      // Reset mocks for firebaseService if they are stateful between describe blocks
+      // For getClient, getCaregiverAvailability, etc.
+      firebaseService.getClient.mockReset();
+      firebaseService.getCaregiverAvailability.mockReset();
+      firebaseService.getSchedulesByCaregiverAndDate.mockReset(); // Used by checkScheduleConflictsWithCaregiver
+
+      mockClientShifts = [
+        {
+          id: 'shift1', clientId: 'clientA', clientName: 'Client Alpha',
+          date: '2024-07-17', startTime: '09:00', endTime: '13:00', durationHours: 4,
+          requiredSkills: ['skillA'], location: { latitude: 1, longitude: 1 }, clientBusLineAccess: false
+        },
+      ];
+      mockCaregivers = [
+        {
+          id: 'cg1', name: 'Caregiver One', skills: ['skillA', 'skillB'], drives_car: true,
+          max_days_per_week: 5, max_hours_per_week: 40, target_weekly_hours: 30,
+          availabilityData: { // Tuesday, Wednesday, Thursday 9-5
+            general_rules: [{ id: 'cg1rule', type: 'weekly_recurring', days_of_week: ['Tuesday', 'Wednesday', 'Thursday'], start_time: '09:00', end_time: '17:00' }]
+          }
+        },
+      ];
+    });
+
+    it('should assign a simple shift to a perfectly matching caregiver', async () => {
+      // clientShiftsToFill for Wednesday 09:00-13:00
+      mockClientShifts[0].date = '2024-07-17'; // Wednesday
+
+      const result = await scheduler.optimizeSchedules(mockClientShifts, mockCaregivers);
+
+      expect(result.assignments.length).toBe(1);
+      expect(result.unmetShifts.length).toBe(0);
+      expect(result.assignments[0].caregiverId).toBe('cg1');
+      expect(result.assignments[0].shiftId).toBe('shift1');
+      expect(result.optimization_summary.shiftsAssigned).toBe(1);
+      expect(result.optimization_summary.caregiversUtilized).toBe(1);
+    });
+
+    it('should not assign if caregiver exceeds max_hours_per_week', async () => {
+      mockCaregivers[0].max_hours_per_week = 3; // Shift is 4 hours
+      mockClientShifts[0].date = '2024-07-17'; // Wednesday
+
+      const result = await scheduler.optimizeSchedules(mockClientShifts, mockCaregivers);
+
+      expect(result.assignments.length).toBe(0);
+      expect(result.unmetShifts.length).toBe(1);
+      expect(result.unmetShifts[0].id).toBe('shift1');
+    });
+
+    it('should not assign if caregiver has no more days in max_days_per_week', async () => {
+      mockCaregivers[0].max_days_per_week = 1;
+      // Pre-assign one shift to use up the day
+      mockCaregivers[0].workedDaysThisPeriod = new Set(['2024-07-16']); // Assign a shift on Tuesday
+
+      mockClientShifts = [
+        { id: 'shift2', clientId: 'clientB', clientName: 'Client Beta', date: '2024-07-17', startTime: '10:00', endTime: '14:00', durationHours: 4, requiredSkills: ['skillA']},
+      ];
+
+      const result = await scheduler.optimizeSchedules(mockClientShifts, mockCaregivers);
+
+      expect(result.assignments.length).toBe(0);
+      expect(result.unmetShifts.length).toBe(1);
+      expect(result.unmetShifts[0].id).toBe('shift2');
+    });
+
+    it('should not assign multiple shifts on the same day to the same caregiver', async () => {
+      mockClientShifts = [
+        { id: 'shift1', clientId: 'clientA', clientName: 'Client Alpha', date: '2024-07-17', startTime: '09:00', endTime: '11:00', durationHours: 2, requiredSkills: ['skillA'] },
+        { id: 'shift2', clientId: 'clientB', clientName: 'Client Beta', date: '2024-07-17', startTime: '13:00', endTime: '15:00', durationHours: 2, requiredSkills: ['skillA'] },
+      ];
+
+      const result = await scheduler.optimizeSchedules(mockClientShifts, mockCaregivers);
+
+      expect(result.assignments.length).toBe(1); // Only one shift should be assigned
+      expect(result.unmetShifts.length).toBe(1);
+      // The first shift should be assigned
+      expect(result.assignments[0].shiftId).toBe('shift1');
+      expect(result.unmetShifts[0].id).toBe('shift2');
+    });
+
+    it('should not assign if skills do not match', async () => {
+      mockClientShifts[0].date = '2024-07-17'; // Wednesday
+      mockClientShifts[0].requiredSkills = ['skillX']; // Skill caregiver doesn't have
+
+      const result = await scheduler.optimizeSchedules(mockClientShifts, mockCaregivers);
+
+      expect(result.assignments.length).toBe(0);
+      expect(result.unmetShifts.length).toBe(1);
+    });
+
+    it('should not assign if caregiver not available via isCaregiverAvailable (e.g. wrong day)', async () => {
+      mockClientShifts[0].date = '2024-07-15'; // Monday, caregiver cg1 not available
+
+      const result = await scheduler.optimizeSchedules(mockClientShifts, mockCaregivers);
+
+      expect(result.assignments.length).toBe(0);
+      expect(result.unmetShifts.length).toBe(1);
+    });
+
+    it('should assign to different caregivers if one is maxed out', async () => {
+      mockClientShifts = [
+        { id: 's1', clientId: 'cA', clientName: 'CA', date: '2024-07-17', startTime: '09:00', endTime: '17:00', durationHours: 8, requiredSkills: ['skillA'] }, // Wed
+        { id: 's2', clientId: 'cB', clientName: 'CB', date: '2024-07-18', startTime: '09:00', endTime: '17:00', durationHours: 8, requiredSkills: ['skillA'] }, // Thu
+      ];
+      mockCaregivers = [
+        {
+          id: 'cg1', name: 'CG One', skills: ['skillA'], drives_car: true,
+          max_days_per_week: 1, max_hours_per_week: 8,
+          availabilityData: { general_rules: [{ id: 'r1', type: 'weekly_recurring', days_of_week: ['Wednesday', 'Thursday'], start_time: '08:00', end_time: '18:00' }] }
+        },
+        {
+          id: 'cg2', name: 'CG Two', skills: ['skillA'], drives_car: true,
+          max_days_per_week: 5, max_hours_per_week: 40,
+          availabilityData: { general_rules: [{ id: 'r2', type: 'weekly_recurring', days_of_week: ['Wednesday', 'Thursday'], start_time: '08:00', end_time: '18:00' }] }
+        },
+      ];
+
+      const result = await scheduler.optimizeSchedules(mockClientShifts, mockCaregivers);
+      expect(result.assignments.length).toBe(2);
+      expect(result.unmetShifts.length).toBe(0);
+      const assignedCaregivers = new Set(result.assignments.map(a => a.caregiverId));
+      expect(assignedCaregivers.size).toBe(2); // Should use both caregivers
+      expect(result.assignments.find(a=>a.shiftId === 's1').caregiverId).toBe('cg1'); // cg1 takes first shift
+      expect(result.assignments.find(a=>a.shiftId === 's2').caregiverId).toBe('cg2'); // cg2 takes second
+    });
+
+    // TODO: Add tests for transportation mismatch (drives_car vs clientBusLineAccess)
+    // TODO: Add tests for more complex scoring/selection when multiple caregivers are valid candidates
+    // TODO: Add tests for 'Last Resort' simultaneous client coverage (once implemented)
+  });
 });

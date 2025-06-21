@@ -290,6 +290,16 @@ class NotificationService {
         notificationDataPayload.gap_duration_minutes = opportunity.gap_duration_minutes;
         break;
 
+      case 'caregiver_shortage_alert':
+        title = `Caregiver Shortage Alert: ${opportunity.date}`;
+        message = opportunity.summary || `Potential caregiver shortage identified for date ${opportunity.date} requiring skills: ${(opportunity.required_skills || []).join(', ') || 'general care'}.`;
+        notificationDataPayload.date = opportunity.date;
+        notificationDataPayload.required_skills = opportunity.required_skills;
+        notificationDataPayload.number_of_shifts_affected = opportunity.number_of_shifts_affected;
+        notificationDataPayload.affected_clients_sample = opportunity.affected_clients_sample;
+        notificationDataPayload.details = opportunity.details;
+        break;
+
       case 'schedule_optimization':
         title = 'Schedule Optimization Opportunity';
         message = `Potential optimization found for schedules on ${opportunity.date}.`;

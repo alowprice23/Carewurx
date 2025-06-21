@@ -614,6 +614,154 @@ class EnhancedScheduler {
       return null; // Return null on error
     }
   }
+
+  /**
+   * Main function to optimize schedules based on client needs and caregiver availability.
+   * Aims to cover client authorized hours using the fewest caregivers, respecting constraints.
+   *
+   * @param {Array<Object>} clientShiftsToFill - Array of discrete shift objects that need to be filled.
+   *   Each shift object: { id (unique shiftId), clientId, clientName, date, startTime, endTime, durationHours, requiredSkills, location, clientBusLineAccess }
+   * @param {Array<Object>} availableCaregivers - Array of caregiver objects.
+   *   Each caregiver: { id, name, skills, availabilityData (from getCaregiverAvailability), drives_car,
+   *                    max_days_per_week, max_hours_per_week, target_weekly_hours, employment_type,
+   *                    current_assignments_this_period: [{ date, startTime, endTime, shiftId }] (to track daily/weekly limits) }
+   * @param {Object} optimizationParams - Parameters like { primaryGoal: 'maximizeCoverageFewestCaregivers' }
+   * @returns {Promise<Object>} - { assignments: [], unmetShifts: [], optimization_summary: {} }
+   */
+  async optimizeSchedules(clientShiftsToFill, availableCaregiversInput, optimizationParams = {}) {
+    console.log(`Starting schedule optimization. Shifts to fill: ${clientShiftsToFill.length}, Caregivers available: ${availableCaregiversInput.length}`);
+    const assignments = [];
+    let unmetShifts = [...clientShiftsToFill]; // Start with all shifts needing to be met
+
+    // Initialize/normalize caregiver data for tracking during optimization
+    const caregivers = availableCaregiversInput.map(cg => ({
+      ...cg,
+      assignedShiftsThisPeriod: [], // Tracks shifts assigned in this optimization run
+      workedHoursThisPeriod: 0,
+      workedDaysThisPeriod: new Set(), // Using a Set to count unique days
+    }));
+
+    // Sort shifts: Maybe by priority? Or by earliest start time? For now, process as is.
+    // TODO: Consider sorting strategies for shifts (e.g., by client priority, by earliest time)
+
+    // Sort caregivers: Maybe by preference, or fewest current hours?
+    // For "fewest caregivers", we might prefer those who can take more hours.
+    // For now, a simple sort or use as is.
+    // TODO: Consider caregiver scoring/sorting for selection priority.
+
+    for (const shift of clientShiftsToFill) {
+      if (!unmetShifts.find(s => s.id === shift.id)) {
+        continue; // Already assigned in this run by some logic (e.g. linked shifts)
+      }
+
+      let bestCandidate = null;
+      let bestCandidateScore = -1; // Or some other scoring mechanism
+
+      for (const caregiver of caregivers) {
+        // 1. Check hard constraints
+        // Max weekly hours
+        const shiftDuration = (this.timeToMinutes(shift.endTime) - this.timeToMinutes(shift.startTime)) / 60;
+        if (caregiver.workedHoursThisPeriod + shiftDuration > caregiver.max_hours_per_week) {
+          continue;
+        }
+
+        // Max daily shifts (rule: no multiple shifts in a day)
+        if (caregiver.assignedShiftsThisPeriod.some(s => s.date === shift.date)) {
+          continue;
+        }
+
+        // Max weekly days
+        const tempWorkedDays = new Set(caregiver.workedDaysThisPeriod);
+        tempWorkedDays.add(shift.date);
+        if (tempWorkedDays.size > caregiver.max_days_per_week) {
+          continue;
+        }
+
+        // 2. Check availability (using the refined isCaregiverAvailable)
+        const isAvailable = this.isCaregiverAvailable(caregiver.availabilityData, shift.date, shift.startTime, shift.endTime);
+        if (!isAvailable) {
+          continue;
+        }
+
+        // 3. Check skill match
+        const hasRequiredSkills = (shift.requiredSkills || []).every(skill => (caregiver.skills || []).includes(skill));
+        if (!hasRequiredSkills) {
+          continue;
+        }
+
+        // 4. Check travel/transportation match (simplified)
+        if (!caregiver.drives_car && !shift.clientBusLineAccess) {
+          // If caregiver doesn't drive and client isn't on bus line, assume it's a no-match for now
+          // More complex distance/travel time logic could be here
+          continue;
+        }
+
+        // TODO: Add actual scoring based on preferences, travel distance (if locations available), continuity etc.
+        // For now, any valid caregiver is a candidate. We'll just pick the first one.
+        // A better approach would be to score all valid candidates and pick the best.
+        let currentScore = 100; // Base score if all checks pass
+
+        // Example: Penalize if caregiver is already working many hours (to balance load initially)
+        currentScore -= caregiver.workedHoursThisPeriod;
+
+        if (currentScore > bestCandidateScore) {
+          bestCandidate = caregiver;
+          bestCandidateScore = currentScore;
+        }
+      }
+
+      if (bestCandidate) {
+        // Assign shift to bestCandidate
+        const newAssignment = {
+          shiftId: shift.id, // Link to the original client shift ID
+          scheduleId: `opt-sched-${Date.now()}-${Math.floor(Math.random() * 10000)}`, // Generate a new schedule ID
+          clientId: shift.clientId,
+          clientName: shift.clientName,
+          caregiverId: bestCandidate.id,
+          caregiverName: bestCandidate.name,
+          date: shift.date,
+          startTime: shift.startTime,
+          endTime: shift.endTime,
+          durationHours: shiftDuration,
+          status: 'pending_confirmation', // Or 'assigned' if auto-confirming
+        };
+        assignments.push(newAssignment);
+
+        // Update caregiver's tracking info
+        bestCandidate.assignedShiftsThisPeriod.push({
+            date: shift.date,
+            startTime: shift.startTime,
+            endTime: shift.endTime,
+            shiftId: shift.id
+        });
+        bestCandidate.workedHoursThisPeriod += shiftDuration;
+        bestCandidate.workedDaysThisPeriod.add(shift.date);
+
+        // Remove from unmetShifts
+        unmetShifts = unmetShifts.filter(s => s.id !== shift.id);
+        console.log(`Assigned shift ${shift.id} for ${shift.clientName} to ${bestCandidate.name}`);
+      } else {
+        console.log(`Could not find suitable caregiver for shift ${shift.id} for ${shift.clientName}`);
+      }
+    }
+
+    // TODO: Implement "Last Resort" for simultaneous clients if unmetShifts is still large.
+
+    const optimization_summary = {
+      totalShiftsToFill: clientShiftsToFill.length,
+      shiftsAssigned: assignments.length,
+      shiftsUnmet: unmetShifts.length,
+      caregiversUtilized: new Set(assignments.map(a => a.caregiverId)).size,
+      // More summary stats can be added here
+    };
+    console.log('Optimization attempt finished.', optimization_summary);
+
+    return {
+      assignments,
+      unmetShifts,
+      optimization_summary
+    };
+  }
 }
 
 module.exports = new EnhancedScheduler();
