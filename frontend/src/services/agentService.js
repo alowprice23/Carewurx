@@ -423,6 +423,109 @@ class AgentService {
       throw error;
     }
   }
+
+  /**
+   * Get API key status from the backend
+   * @returns {Promise<Object>} - Object with boolean flags for each provider (e.g., { groq: true, openai: false })
+   */
+  async getApiKeyStatus() {
+    try {
+      if (this.isElectronAvailable) {
+        if (!window.electronAPI || typeof window.electronAPI.getApiKeyStatus !== 'function') {
+          console.warn('Electron API getApiKeyStatus not available, falling back to mock.');
+          // Fallback to mock if function specifically isn't there
+          return { groq: false, openai: false, anthropic: false, error: 'IPC function missing' };
+        }
+        return await window.electronAPI.getApiKeyStatus();
+      } else {
+        console.log('Agent Service: Using mock API key status in browser-only mode');
+        await delay(300);
+        // In browser mode, assume no keys are valid by default for safety
+        return { groq: false, openai: false, anthropic: false };
+      }
+    } catch (error) {
+      console.error('Error getting API key status:', error);
+      // Return a default error state
+      return { groq: false, openai: false, anthropic: false, error: error.message };
+    }
+  }
+
+  /**
+   * Stream response from an LLM provider
+   * @param {Object} params - Parameters including provider, model, prompt, onChunk callback, signal
+   * @returns {Promise<Object>} - Object with fullResponse and token counts
+   */
+  async streamResponse({ provider, model, prompt, onChunk, signal }) {
+    try {
+      if (this.isElectronAvailable) {
+        if (!window.electronAPI || typeof window.electronAPI.streamLLMResponse !== 'function') {
+           console.warn('Electron API streamLLMResponse not available, falling back to mock.');
+           // Fallback to mock if function specifically isn't there
+           const mockResponse = this._generateMockResponse(prompt, 'LLM');
+           for (const char of mockResponse) {
+             await delay(50);
+             if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+             onChunk(char);
+           }
+           return { fullResponse: mockResponse, promptTokens: 10, responseTokens: mockResponse.length };
+        }
+        // Assuming the backend will handle the onChunk callback via IPC events
+        // The actual implementation of this IPC call might be more complex
+        // and involve setting up event listeners for streaming chunks.
+        // For now, we assume electronAPI.streamLLMResponse handles this.
+        return await window.electronAPI.streamLLMResponse({ provider, model, prompt, signal }, onChunk);
+      } else {
+        console.log('Agent Service: Using mock LLM stream in browser-only mode');
+        const mockFullResponse = `Mock response for "${prompt}" from ${model} via ${provider}. This is a simulated stream.`;
+        // Simulate streaming
+        for (let i = 0; i < mockFullResponse.length; i++) {
+          if (signal?.aborted) {
+            console.log('Mock stream aborted');
+            throw new DOMException('Aborted by user.', 'AbortError');
+          }
+          onChunk(mockFullResponse[i]);
+          await delay(50); // Simulate typing delay
+        }
+        return {
+          fullResponse: mockFullResponse,
+          promptTokens: prompt.length / 4, // Rough estimate
+          responseTokens: mockFullResponse.length / 4 // Rough estimate
+        };
+      }
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log('Stream aborted by client:', error.message);
+      } else {
+        console.error('Error streaming LLM response:', error);
+      }
+      throw error; // Re-throw to be caught by UI
+    }
+  }
+
+  /**
+   * Submit feedback for an LLM response
+   * @param {Object} feedbackData - Data including provider, model, prompt, response, quality, feedback
+   * @returns {Promise<Object>} - Confirmation of submission
+   */
+  async submitResponseFeedback(feedbackData) {
+    try {
+      if (this.isElectronAvailable) {
+         if (!window.electronAPI || typeof window.electronAPI.submitLLMFeedback !== 'function') {
+          console.warn('Electron API submitLLMFeedback not available, falling back to mock.');
+          return { success: true, message: 'Feedback submitted (mock - IPC missing)' };
+        }
+        return await window.electronAPI.submitLLMFeedback(feedbackData);
+      } else {
+        console.log('Agent Service: Using mock feedback submission in browser-only mode');
+        await delay(500);
+        console.log('Mock feedback submitted:', feedbackData);
+        return { success: true, message: 'Feedback submitted (mock)' };
+      }
+    } catch (error) {
+      console.error('Error submitting LLM feedback:', error);
+      throw error;
+    }
+  }
 }
 
 // Create and export singleton instance
