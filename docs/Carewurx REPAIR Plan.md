@@ -31,6 +31,7 @@ Here is a list of identified defects, their symptoms, proposed fixes, estimated 
     *   **Proposed Fix:** Modify `agents/core/llm-service.js` (and any other backend Groq integrations) to initialize the Groq SDK using the `GROQ_API_KEY` environment variable, as per Carewurx Master Prompt rule 0-2. Delete the `Groq API KEY.txt` file from the repository and ensure it's in `.gitignore`.
     *   **Effort:** S
     *   **Priority:** Blocking ✔
+    *   **Status:** ✔ Done (Commit: `fix/groq-env-var`)
 
 5.  **Direct Groq API Call from Frontend**
     *   **File(s):** `FRONTEND_INTEGRATION_PLAN.md` mentions a direct `fetch` to Groq API. This pattern might be implemented in components like `frontend/src/components/AgentChat.jsx`, `frontend/src/components/ResponseStreamingUI.jsx`, or related frontend services.

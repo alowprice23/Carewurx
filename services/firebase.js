@@ -4,8 +4,8 @@
  */
 
 const { initializeApp, cert } = require('firebase-admin/app');
-const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore');
-const path = require('path');
+const { getFirestore, Timestamp } = require('firebase-admin/firestore'); // FieldValue removed
+// path removed
 const fs = require('fs');
 const dotenv = require('dotenv');
 
@@ -28,38 +28,56 @@ class FirebaseService {
     }
     
     try {
-      let serviceAccount;
+      let serviceAccount; // This variable will hold the loaded service account JSON
       
-      // Check for environment variable configuration first
-      if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+      // let serviceAccount; // This was the duplicate line, now removed.
+      const googleAppCreds = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+      const firebaseServiceAccountBase64 = process.env.FIREBASE_SERVICE_ACCOUNT_JSON_BASE64;
+
+      if (googleAppCreds) {
+        // GOOGLE_APPLICATION_CREDENTIALS can be a path to the file or the JSON content itself.
+        // The admin SDK handles this automatically if 'credential' is given 'applicationDefault()'.
+        // However, to be explicit and align with 'cert()', we'll try to load if it's a path.
+        // For this refactor, we'll assume GOOGLE_APPLICATION_CREDENTIALS is a path if set.
+        if (fs.existsSync(googleAppCreds)) {
+          try {
+            serviceAccount = require(googleAppCreds);
+            console.log('Using Firebase credentials from GOOGLE_APPLICATION_CREDENTIALS path.');
+          } catch (e) {
+            console.error(`Error loading service account from GOOGLE_APPLICATION_CREDENTIALS path ${googleAppCreds}: ${e.message}`);
+            // Fall through to try base64 or fail
+          }
+        } else {
+            // If it's not a valid path, it might be the JSON content itself (less common for this var)
+            // or SDK handles it, or it's an error. For cert(), we need the object.
+            // This path is less robust; preferring base64 if direct path fails.
+            console.warn(`GOOGLE_APPLICATION_CREDENTIALS path "${googleAppCreds}" does not exist. Attempting other methods.`);
+        }
+      }
+
+      if (!serviceAccount && firebaseServiceAccountBase64) {
         try {
-          serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-          console.log('Using Firebase credentials from environment variable');
-        } catch (parseError) {
-          console.error('Error parsing FIREBASE_SERVICE_ACCOUNT environment variable:', parseError);
+          serviceAccount = JSON.parse(Buffer.from(firebaseServiceAccountBase64, 'base64').toString('utf-8'));
+          console.log('Using Firebase credentials from FIREBASE_SERVICE_ACCOUNT_JSON_BASE64.');
+        } catch (e) {
+          console.error(`Error parsing FIREBASE_SERVICE_ACCOUNT_JSON_BASE64: ${e.message}`);
+          // Fall through to fail
         }
       }
       
-      // If not found in environment, check for path in environment or use default
       if (!serviceAccount) {
-        const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH || 
-          path.join(process.cwd(), 'carewurx-firebase-adminsdk-fbsvc-e7fcc4b08e.json');
-          
-        if (fs.existsSync(serviceAccountPath)) {
-          try {
-            serviceAccount = require(serviceAccountPath);
-            console.log(`Using Firebase credentials from ${serviceAccountPath}`);
-          } catch (requireError) {
-            throw new Error(`Failed to load service account file: ${requireError.message}`);
-          }
-        } else {
-          throw new Error(`Firebase service account file not found at ${serviceAccountPath}`);
-        }
+        // If neither GOOGLE_APPLICATION_CREDENTIALS (as a loadable path) nor FIREBASE_SERVICE_ACCOUNT_JSON_BASE64 is provided and valid,
+        // then we cannot initialize.
+        // The old code also checked for process.env.FIREBASE_SERVICE_ACCOUNT (raw JSON string)
+        // and process.env.FIREBASE_SERVICE_ACCOUNT_PATH.
+        // We are simplifying to the two more standard/secure methods.
+        // The previous direct fallback to 'carewurx-firebase-adminsdk-fbsvc-e7fcc4b08e.json' is removed.
+        throw new Error('Firebase Admin SDK credentials not found. Set GOOGLE_APPLICATION_CREDENTIALS (path) or FIREBASE_SERVICE_ACCOUNT_JSON_BASE64 (base64 JSON content).');
       }
       
       // Configure Firebase app
       const firebaseConfig = {
-        credential: cert(serviceAccount),
+        credential: cert(serviceAccount), // cert() expects the service account JSON object
         ...options
       };
       
