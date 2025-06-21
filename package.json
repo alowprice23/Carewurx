@@ -7,7 +7,7 @@
 "start": "npm run build:frontend && electron .",
 "build:frontend": "cd frontend && npm install && npm run build",
     "lint": "eslint .",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "cd frontend && npm test",
     "test:e2e": "playwright test",
     "build": "electron-builder",
     "seed": "node -e \"require('./services/seed-data').seedDatabase()\""

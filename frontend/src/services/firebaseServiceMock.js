@@ -7,6 +7,149 @@
 
 import firebaseService from './firebaseService';
 
+const createMockDataStore = (initialData = []) => {
+  let storeData = JSON.parse(JSON.stringify(initialData)); // Deep copy for initial state
+
+  return {
+    get: () => JSON.parse(JSON.stringify(storeData)), // Return deep copy for safe reads
+    findById: (id) => {
+      const item = storeData.find(i => i.id === id);
+      return item ? JSON.parse(JSON.stringify(item)) : null;
+    },
+    find: (predicate) => {
+      const item = storeData.find(predicate);
+      return item ? JSON.parse(JSON.stringify(item)) : null;
+    },
+    filter: (predicate) => JSON.parse(JSON.stringify(storeData.filter(predicate))),
+    add: (item) => {
+      const newItemId = item.id || `mockid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const newItem = { ...item, id: newItemId };
+      storeData.push(newItem);
+      return JSON.parse(JSON.stringify(newItem));
+    },
+    update: (id, updates) => {
+      const index = storeData.findIndex(item => item.id === id);
+      if (index !== -1) {
+        storeData[index] = { ...storeData[index], ...updates };
+        return JSON.parse(JSON.stringify(storeData[index]));
+      }
+      console.warn(`MockDataStore: Item with id ${id} not found for update.`);
+      return null;
+    },
+    set: (id, item, options = { merge: false }) => {
+      const index = storeData.findIndex(i => i.id === id);
+      const newItemWithId = { ...item, id };
+
+      if (index !== -1) {
+        if (options.merge) {
+          storeData[index] = { ...storeData[index], ...newItemWithId };
+        } else {
+          storeData[index] = newItemWithId;
+        }
+      } else {
+        storeData.push(newItemWithId);
+      }
+      const resultItem = storeData.find(i => i.id === id);
+      return resultItem ? JSON.parse(JSON.stringify(resultItem)) : null;
+    },
+    delete: (id) => {
+      const initialLength = storeData.length;
+      storeData = storeData.filter(item => item.id !== id);
+      return storeData.length < initialLength;
+    },
+    reset: () => {
+      storeData = JSON.parse(JSON.stringify(initialData));
+    },
+    _inspect: () => storeData
+  };
+};
+
+// Define initial mock data (will be used by the stores)
+const INITIAL_MOCK_CAREGIVERS_DATA = [
+  {
+    id: 'caregiver-1',
+    firstName: 'Michael',
+    lastName: 'Johnson',
+    email: 'michael.j@example.com',
+    phone: '555-222-3333',
+    address: '789 Elm St, Othertown, US 34567',
+    skills: ['mobility', 'medication', 'bathing'],
+    transportation: { hasCar: true, hasLicense: true, usesPublicTransport: false }
+  },
+  {
+    id: 'caregiver-2',
+    firstName: 'Sarah',
+    lastName: 'Williams',
+    email: 'sarah.w@example.com',
+    phone: '555-444-5555',
+    address: '321 Pine Rd, Somewhere, US 67890',
+    skills: ['meals', 'companionship', 'light housekeeping'],
+    transportation: { hasCar: false, hasLicense: true, usesPublicTransport: true }
+  }
+];
+
+const INITIAL_MOCK_CLIENTS_DATA = [
+  {
+    id: 'client-1',
+    firstName: 'John',
+    lastName: 'Smith',
+    email: 'john.smith@example.com',
+    phone: '555-111-2222',
+    address: '123 Main St, Anytown, US 12345',
+    careNeeds: [ { type: 'mobility', description: 'Mobility Assistance', priority: 3 }, { type: 'medication', description: 'Medication Management', priority: 5 } ],
+    transportation: { onBusLine: true, requiresDriverCaregiver: false, mobilityEquipment: ['walker'] },
+    serviceHours: { hoursPerWeek: 20, preferredDays: [1, 3, 5], preferredTimeRanges: [ { startTime: '09:00', endTime: '13:00' } ] },
+    serviceStatus: 'Active', createdAt: '2023-01-15', updatedAt: '2023-06-01'
+  },
+  {
+    id: 'client-2',
+    firstName: 'Alice',
+    lastName: 'Johnson',
+    email: 'alice.j@example.com',
+    phone: '555-333-4444',
+    address: '456 Oak St, Sometown, US 23456',
+    careNeeds: [ { type: 'meals', description: 'Meal Preparation', priority: 3 }, { type: 'companionship', description: 'Companionship', priority: 2 }, { type: 'housekeeping', description: 'Light Housekeeping', priority: 2 } ],
+    transportation: { onBusLine: false, requiresDriverCaregiver: true, mobilityEquipment: [] },
+    serviceHours: { hoursPerWeek: 15, preferredDays: [0, 2, 4], preferredTimeRanges: [ { startTime: '14:00', endTime: '17:00' } ] },
+    serviceStatus: 'Active', createdAt: '2023-02-20', updatedAt: '2023-05-15'
+  }
+];
+
+const INITIAL_MOCK_SCHEDULES_DATA = [
+  { id: 'schedule-1', client_id: 'client-1', caregiver_id: 'caregiver-1', date: '2023-07-03', startTime: '09:00', endTime: '12:00', status: 'Confirmed' },
+  { id: 'schedule-2', client_id: 'client-2', caregiver_id: 'caregiver-1', date: '2023-07-05', startTime: '09:00', endTime: '11:00', status: 'Confirmed' },
+  { id: 'schedule-3', client_id: 'client-1', caregiver_id: 'caregiver-2', date: '2023-07-02', startTime: '10:00', endTime: '14:00', status: 'Confirmed' }
+];
+
+const caregiversStore = createMockDataStore(INITIAL_MOCK_CAREGIVERS_DATA);
+const clientsStore = createMockDataStore(INITIAL_MOCK_CLIENTS_DATA);
+const schedulesStore = createMockDataStore(INITIAL_MOCK_SCHEDULES_DATA);
+
+// Mock availability data (can be refactored into a store if it grows more complex)
+const MOCK_AVAILABILITY = {
+  'caregiver-1': {
+    caregiverId: 'caregiver-1',
+    regularSchedule: [
+      { dayOfWeek: 1, startTime: '09:00', endTime: '17:00', recurrenceType: 'Weekly' },
+      { dayOfWeek: 3, startTime: '09:00', endTime: '17:00', recurrenceType: 'Weekly' },
+      { dayOfWeek: 5, startTime: '09:00', endTime: '13:00', recurrenceType: 'Weekly' }
+    ],
+    timeOff: [ { startDate: '2023-07-10', endDate: '2023-07-14', reason: 'Vacation', status: 'Approved' } ],
+    lastUpdated: new Date().toISOString()
+  },
+  'caregiver-2': {
+    caregiverId: 'caregiver-2',
+    regularSchedule: [
+      { dayOfWeek: 0, startTime: '08:00', endTime: '16:00', recurrenceType: 'Weekly' },
+      { dayOfWeek: 2, startTime: '08:00', endTime: '16:00', recurrenceType: 'Weekly' },
+      { dayOfWeek: 4, startTime: '08:00', endTime: '16:00', recurrenceType: 'Weekly' }
+    ],
+    timeOff: [],
+    lastUpdated: new Date().toISOString()
+  }
+};
+
+
 // Create a mock Firestore-like structure to handle the db.collection() calls
 // that CaregiverProfileForm and ClientProfileForm are using
 firebaseService.db = {
@@ -70,11 +213,13 @@ firebaseService.db = {
         
         let results = [];
         if (collectionName === 'schedules') {
-          results = MOCK_SCHEDULES;
+          results = schedulesStore.get();
         } else if (collectionName === 'clients') {
-          results = MOCK_CLIENTS;
+          results = clientsStore.get();
         } else if (collectionName === 'caregivers') {
-          results = MOCK_CAREGIVERS;
+          results = caregiversStore.get();
+        } else {
+          console.warn(`Mock DB: Unhandled collection in get(): ${collectionName}`);
         }
         
         // Return mock query snapshot
@@ -86,13 +231,17 @@ firebaseService.db = {
             exists: true,
             ref: {
               delete: async () => {
+                let success = false;
                 if (collectionName === 'schedules') {
-                  const index = MOCK_SCHEDULES.findIndex(s => s.id === doc.id);
-                  if (index !== -1) {
-                    MOCK_SCHEDULES.splice(index, 1);
-                  }
+                  success = schedulesStore.delete(doc.id);
+                } else if (collectionName === 'clients') {
+                  success = clientsStore.delete(doc.id);
+                } else if (collectionName === 'caregivers') {
+                  success = caregiversStore.delete(doc.id);
+                } else {
+                  console.warn(`Mock DB: Unhandled collection in ref.delete(): ${collectionName}`);
                 }
-                return { success: true };
+                return { success };
               }
             }
           }))
@@ -104,38 +253,27 @@ firebaseService.db = {
         // Add slight delay to simulate network request
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Generate a new ID
-        const id = `${collectionName}-${Date.now()}`;
-        
-        // Handle specific collections
+        let addedDoc;
+        // data might not have an id, the store's add method should generate one if absent
         if (collectionName === 'caregivers') {
-          // Add to mock caregivers
-          MOCK_CAREGIVERS.push({
-            id,
-            ...data
-          });
+          addedDoc = caregiversStore.add(data);
         } else if (collectionName === 'clients') {
-          // Add to mock clients
-          MOCK_CLIENTS.push({
-            id,
-            ...data
-          });
-        } else if (collectionName === 'caregiver_availability') {
-          // Add to mock availability data
-          MOCK_AVAILABILITY[data.caregiverId] = {
-            ...data
-          };
+          addedDoc = clientsStore.add(data);
         } else if (collectionName === 'schedules') {
-          // Add to mock schedules
-          MOCK_SCHEDULES.push({
-            id,
-            ...data
-          });
+          addedDoc = schedulesStore.add(data);
+        } else if (collectionName === 'caregiver_availability') {
+          // MOCK_AVAILABILITY is not using the store yet, handle separately
+          const id = data.caregiverId || `avail-${Date.now()}`; // Ensure an ID
+          MOCK_AVAILABILITY[id] = { ...data, id };
+          addedDoc = MOCK_AVAILABILITY[id];
+        } else {
+          console.warn(`Mock DB: Unhandled collection in add(): ${collectionName}`);
+          throw new Error(`Mock DB: Unhandled collection ${collectionName}`);
         }
         
-        // Return mock document reference
+        // Return mock document reference (id is the important part)
         return {
-          id
+          id: addedDoc.id
         };
       },
       doc: function(docId) {
@@ -147,23 +285,27 @@ firebaseService.db = {
             await new Promise(resolve => setTimeout(resolve, 300));
             
             // Find the document based on collection
-            let data = null;
+            let docData = null;
             if (collectionName === 'caregivers') {
-              data = MOCK_CAREGIVERS.find(c => c.id === docId);
+              docData = caregiversStore.findById(docId);
             } else if (collectionName === 'clients') {
-              data = MOCK_CLIENTS.find(c => c.id === docId);
-            } else if (collectionName === 'caregiver_availability') {
-              data = MOCK_AVAILABILITY[docId];
+              docData = clientsStore.findById(docId);
             } else if (collectionName === 'schedules') {
-              data = MOCK_SCHEDULES.find(s => s.id === docId);
+              docData = schedulesStore.findById(docId);
+            } else if (collectionName === 'caregiver_availability') {
+              // MOCK_AVAILABILITY is not using the store yet
+              docData = MOCK_AVAILABILITY[docId];
+            } else {
+              console.warn(`Mock DB: Unhandled collection in doc.get(): ${collectionName}`);
             }
             
             // Return mock document snapshot
             return {
-              exists: !!data,
+              exists: !!docData,
               data: function() {
-                return data;
-              }
+                return docData; // This will be a deep copy from the store
+              },
+              id: docId // Include docId in the snapshot
             };
           },
           update: async function(data) {
@@ -173,33 +315,23 @@ firebaseService.db = {
             await new Promise(resolve => setTimeout(resolve, 500));
             
             // Update the document based on collection
+            let success = false;
             if (collectionName === 'caregivers') {
-              const index = MOCK_CAREGIVERS.findIndex(c => c.id === docId);
-              if (index !== -1) {
-                MOCK_CAREGIVERS[index] = {
-                  ...MOCK_CAREGIVERS[index],
-                  ...data
-                };
-              }
+              success = !!caregiversStore.update(docId, data);
             } else if (collectionName === 'clients') {
-              const index = MOCK_CLIENTS.findIndex(c => c.id === docId);
-              if (index !== -1) {
-                MOCK_CLIENTS[index] = {
-                  ...MOCK_CLIENTS[index],
-                  ...data
-                };
-              }
+              success = !!clientsStore.update(docId, data);
             } else if (collectionName === 'schedules') {
-              const index = MOCK_SCHEDULES.findIndex(s => s.id === docId);
-              if (index !== -1) {
-                MOCK_SCHEDULES[index] = {
-                  ...MOCK_SCHEDULES[index],
-                  ...data
-                };
+              success = !!schedulesStore.update(docId, data);
+            } else if (collectionName === 'caregiver_availability') {
+              if (MOCK_AVAILABILITY[docId]) {
+                MOCK_AVAILABILITY[docId] = { ...MOCK_AVAILABILITY[docId], ...data };
+                success = true;
               }
+            } else {
+              console.warn(`Mock DB: Unhandled collection in doc.update(): ${collectionName}`);
             }
             
-            return { success: true };
+            return { success };
           },
           set: async function(data, options) {
             console.log(`Mock: Setting document in ${collectionName} with ID ${docId}`, data);
@@ -208,73 +340,26 @@ firebaseService.db = {
             await new Promise(resolve => setTimeout(resolve, 500));
             
             // Handle specific collections
-            if (collectionName === 'caregiver_availability') {
-              MOCK_AVAILABILITY[docId] = {
-                ...data
-              };
-            } else if (collectionName === 'caregivers') {
-              const index = MOCK_CAREGIVERS.findIndex(c => c.id === docId);
-              if (index !== -1) {
-                if (options?.merge) {
-                  MOCK_CAREGIVERS[index] = {
-                    ...MOCK_CAREGIVERS[index],
-                    ...data
-                  };
-                } else {
-                  MOCK_CAREGIVERS[index] = {
-                    id: docId,
-                    ...data
-                  };
-                }
-              } else {
-                MOCK_CAREGIVERS.push({
-                  id: docId,
-                  ...data
-                });
-              }
+            let success = false;
+            if (collectionName === 'caregivers') {
+              success = !!caregiversStore.set(docId, data, options);
             } else if (collectionName === 'clients') {
-              const index = MOCK_CLIENTS.findIndex(c => c.id === docId);
-              if (index !== -1) {
-                if (options?.merge) {
-                  MOCK_CLIENTS[index] = {
-                    ...MOCK_CLIENTS[index],
-                    ...data
-                  };
-                } else {
-                  MOCK_CLIENTS[index] = {
-                    id: docId,
-                    ...data
-                  };
-                }
-              } else {
-                MOCK_CLIENTS.push({
-                  id: docId,
-                  ...data
-                });
-              }
+              success = !!clientsStore.set(docId, data, options);
             } else if (collectionName === 'schedules') {
-              const index = MOCK_SCHEDULES.findIndex(s => s.id === docId);
-              if (index !== -1) {
-                if (options?.merge) {
-                  MOCK_SCHEDULES[index] = {
-                    ...MOCK_SCHEDULES[index],
-                    ...data
-                  };
-                } else {
-                  MOCK_SCHEDULES[index] = {
-                    id: docId,
-                    ...data
-                  };
-                }
+              success = !!schedulesStore.set(docId, data, options);
+            } else if (collectionName === 'caregiver_availability') {
+              // MOCK_AVAILABILITY is not using the store yet
+              if (options?.merge && MOCK_AVAILABILITY[docId]) {
+                MOCK_AVAILABILITY[docId] = { ...MOCK_AVAILABILITY[docId], ...data, id: docId };
               } else {
-                MOCK_SCHEDULES.push({
-                  id: docId,
-                  ...data
-                });
+                MOCK_AVAILABILITY[docId] = { ...data, id: docId };
               }
+              success = true;
+            } else {
+              console.warn(`Mock DB: Unhandled collection in doc.set(): ${collectionName}`);
             }
             
-            return { success: true };
+            return { success };
           },
           delete: async function() {
             console.log(`Mock: Deleting document from ${collectionName} with ID ${docId}`);
@@ -283,24 +368,23 @@ firebaseService.db = {
             await new Promise(resolve => setTimeout(resolve, 300));
             
             // Handle specific collections
+            let success = false;
             if (collectionName === 'caregivers') {
-              const index = MOCK_CAREGIVERS.findIndex(c => c.id === docId);
-              if (index !== -1) {
-                MOCK_CAREGIVERS.splice(index, 1);
-              }
+              success = caregiversStore.delete(docId);
             } else if (collectionName === 'clients') {
-              const index = MOCK_CLIENTS.findIndex(c => c.id === docId);
-              if (index !== -1) {
-                MOCK_CLIENTS.splice(index, 1);
-              }
+              success = clientsStore.delete(docId);
             } else if (collectionName === 'schedules') {
-              const index = MOCK_SCHEDULES.findIndex(s => s.id === docId);
-              if (index !== -1) {
-                MOCK_SCHEDULES.splice(index, 1);
+              success = schedulesStore.delete(docId);
+            } else if (collectionName === 'caregiver_availability') {
+              if (MOCK_AVAILABILITY[docId]) {
+                delete MOCK_AVAILABILITY[docId];
+                success = true;
               }
+            } else {
+              console.warn(`Mock DB: Unhandled collection in doc.delete(): ${collectionName}`);
             }
             
-            return { success: true };
+            return { success };
           }
         };
       },
@@ -313,87 +397,86 @@ firebaseService.db = {
             await new Promise(resolve => setTimeout(resolve, 300));
             
             // Filter the documents based on the query
-            let results = [];
+            let sourceData = [];
             if (collectionName === 'caregivers') {
-              results = MOCK_CAREGIVERS.filter(doc => {
-                if (operator === '==') {
-                  return doc[field] === value;
-                }
-                return false;
-              });
+              sourceData = caregiversStore.get();
             } else if (collectionName === 'clients') {
-              results = MOCK_CLIENTS.filter(doc => {
-                if (operator === '==') {
-                  return doc[field] === value;
-                }
-                return false;
-              });
+              sourceData = clientsStore.get();
             } else if (collectionName === 'schedules') {
-              results = MOCK_SCHEDULES.filter(doc => {
-                if (operator === '==') {
-                  return doc[field] === value;
-                }
-                return false;
-              });
+              sourceData = schedulesStore.get();
+            } else {
+              console.warn(`Mock DB: Unhandled collection in where().get(): ${collectionName}`);
             }
+
+            const filteredResults = sourceData.filter(doc => {
+              // Basic '==' operator support for now
+              if (operator === '==') {
+                return doc[field] === value;
+              }
+              // TODO: Add support for other operators if needed by tests
+              console.warn(`Mock DB: Unsupported operator in where().get(): ${operator}`);
+              return false;
+            });
             
             // Return mock query snapshot
             return {
-              empty: results.length === 0,
-              docs: results.map(doc => ({
+              empty: filteredResults.length === 0,
+              docs: filteredResults.map(doc => ({
                 id: doc.id,
-                data: () => ({ ...doc }),
+                data: () => ({ ...doc }), // Return a copy
                 exists: true,
-                ref: {
+                ref: { // Mock ref for potential chained operations on these results
                   delete: async () => {
-                    if (collectionName === 'schedules') {
-                      const index = MOCK_SCHEDULES.findIndex(s => s.id === doc.id);
-                      if (index !== -1) {
-                        MOCK_SCHEDULES.splice(index, 1);
-                      }
-                    }
-                    return { success: true };
+                    let success = false;
+                    if (collectionName === 'schedules') success = schedulesStore.delete(doc.id);
+                    else if (collectionName === 'clients') success = clientsStore.delete(doc.id);
+                    else if (collectionName === 'caregivers') success = caregiversStore.delete(doc.id);
+                    return { success };
                   }
                 }
               }))
             };
           },
+          // Keep the chained where, but it will also need to be updated to use stores
+          // and handle combined predicates properly. For now, this is a partial update.
           where: function(field2, operator2, value2) {
             // Support for chained where clauses
             return {
               get: async function() {
                 console.log(`Mock: Querying ${collectionName} where ${field} ${operator} ${value} and ${field2} ${operator2} ${value2}`);
-                
-                // Add slight delay to simulate network request
                 await new Promise(resolve => setTimeout(resolve, 300));
                 
-                // Filter the documents based on both queries
-                let results = [];
-                if (collectionName === 'schedules') {
-                  results = MOCK_SCHEDULES.filter(doc => {
-                    if (operator === '==' && operator2 === '==') {
-                      return doc[field] === value && doc[field2] === value2;
-                    }
-                    return false;
-                  });
-                }
+                let sourceData = [];
+                if (collectionName === 'caregivers') sourceData = caregiversStore.get();
+                else if (collectionName === 'clients') sourceData = clientsStore.get();
+                else if (collectionName === 'schedules') sourceData = schedulesStore.get();
+                else console.warn(`Mock DB: Unhandled collection in chained where().get(): ${collectionName}`);
+
+                const filteredResults = sourceData.filter(doc => {
+                  let match1 = false;
+                  let match2 = false;
+                  if (operator === '==') match1 = doc[field] === value;
+                  else console.warn(`Mock DB: Unsupported operator1 in chained where(): ${operator}`);
+
+                  if (operator2 === '==') match2 = doc[field2] === value2;
+                  else console.warn(`Mock DB: Unsupported operator2 in chained where(): ${operator2}`);
+
+                  return match1 && match2;
+                });
                 
-                // Return mock query snapshot
                 return {
-                  empty: results.length === 0,
-                  docs: results.map(doc => ({
+                  empty: filteredResults.length === 0,
+                  docs: filteredResults.map(doc => ({
                     id: doc.id,
                     data: () => ({ ...doc }),
                     exists: true,
                     ref: {
                       delete: async () => {
-                        if (collectionName === 'schedules') {
-                          const index = MOCK_SCHEDULES.findIndex(s => s.id === doc.id);
-                          if (index !== -1) {
-                            MOCK_SCHEDULES.splice(index, 1);
-                          }
-                        }
-                        return { success: true };
+                        let success = false;
+                        if (collectionName === 'schedules') success = schedulesStore.delete(doc.id);
+                        else if (collectionName === 'clients') success = clientsStore.delete(doc.id);
+                        else if (collectionName === 'caregivers') success = caregiversStore.delete(doc.id);
+                        return { success };
                       }
                     }
                   }))
@@ -407,7 +490,7 @@ firebaseService.db = {
   }
 };
 
-// Mock availability data
+// Mock availability data (remains as is for now, not using createMockDataStore)
 const MOCK_AVAILABILITY = {
   'caregiver-1': {
     caregiverId: 'caregiver-1',
@@ -609,7 +692,7 @@ firebaseService.getSchedulesByCaregiverAndDate = async (caregiverId, date) => {
   // Add slight delay to simulate network request
   await new Promise(resolve => setTimeout(resolve, 300));
   
-  return MOCK_SCHEDULES.filter(schedule => 
+  return schedulesStore.filter(schedule =>
     schedule.caregiver_id === caregiverId && schedule.date === date
   );
 };
@@ -628,8 +711,8 @@ firebaseService.getAvailableCaregivers = async (date, startTime, endTime) => {
   await new Promise(resolve => setTimeout(resolve, 500));
   
   // Logic to determine which caregivers are available
-  // For this mock, we'll just return all caregivers as available
-  return MOCK_CAREGIVERS;
+  // For this mock, we'll just return all caregivers from the store as available
+  return caregiversStore.get();
 };
 
 /**
@@ -645,15 +728,13 @@ firebaseService.createSchedule = async (scheduleData) => {
   
   // Generate a new ID
   const newSchedule = {
-    id: `schedule-${Date.now()}`,
+    // id will be generated by the store if not provided
     ...scheduleData,
     status: scheduleData.status || 'Pending'
   };
   
-  // Add to mock data
-  MOCK_SCHEDULES.push(newSchedule);
-  
-  return newSchedule;
+  // Add to store
+  return schedulesStore.add(newSchedule);
 };
 
 /**
@@ -668,19 +749,14 @@ firebaseService.updateSchedule = async (scheduleId, scheduleData) => {
   // Add slight delay to simulate network request
   await new Promise(resolve => setTimeout(resolve, 500));
   
-  // Find and update the schedule in our mock data
-  const index = MOCK_SCHEDULES.findIndex(schedule => schedule.id === scheduleId);
+  // Find and update the schedule in the store
+  const updatedSchedule = schedulesStore.update(scheduleId, scheduleData);
   
-  if (index !== -1) {
-    MOCK_SCHEDULES[index] = {
-      ...MOCK_SCHEDULES[index],
-      ...scheduleData
-    };
-    
-    return MOCK_SCHEDULES[index];
+  if (updatedSchedule) {
+    return updatedSchedule;
   }
   
-  throw new Error(`Schedule with ID ${scheduleId} not found`);
+  throw new Error(`Mock: Schedule with ID ${scheduleId} not found for update`);
 };
 
 /**
@@ -693,7 +769,7 @@ firebaseService.getAllCaregivers = async () => {
   // Add slight delay to simulate network request
   await new Promise(resolve => setTimeout(resolve, 300));
   
-  return MOCK_CAREGIVERS.map(caregiver => ({ ...caregiver }));
+  return caregiversStore.get();
 };
 
 /**
@@ -707,13 +783,7 @@ firebaseService.getCaregiverById = async (caregiverId) => {
   // Add slight delay to simulate network request
   await new Promise(resolve => setTimeout(resolve, 300));
   
-  const caregiver = MOCK_CAREGIVERS.find(caregiver => caregiver.id === caregiverId);
-  
-  if (caregiver) {
-    return { ...caregiver, id: caregiverId };
-  }
-  
-  return null;
+  return caregiversStore.findById(caregiverId);
 };
 
 /**
@@ -727,18 +797,14 @@ firebaseService.createCaregiver = async (caregiverData) => {
   // Add slight delay to simulate network request
   await new Promise(resolve => setTimeout(resolve, 500));
   
-  // Generate a new ID
-  const newCaregiver = {
-    id: `caregiver-${Date.now()}`,
+  // id will be generated by store if not present in caregiverData
+  const newCaregiverData = {
     ...caregiverData,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
   
-  // Add to mock data
-  MOCK_CAREGIVERS.push(newCaregiver);
-  
-  return newCaregiver;
+  return caregiversStore.add(newCaregiverData);
 };
 
 /**
@@ -753,20 +819,17 @@ firebaseService.updateCaregiver = async (caregiverId, caregiverData) => {
   // Add slight delay to simulate network request
   await new Promise(resolve => setTimeout(resolve, 500));
   
-  // Find and update the caregiver in our mock data
-  const index = MOCK_CAREGIVERS.findIndex(caregiver => caregiver.id === caregiverId);
+  const updatedCaregiverData = {
+    ...caregiverData,
+    updatedAt: new Date().toISOString()
+  };
+  const updatedCaregiver = caregiversStore.update(caregiverId, updatedCaregiverData);
   
-  if (index !== -1) {
-    MOCK_CAREGIVERS[index] = {
-      ...MOCK_CAREGIVERS[index],
-      ...caregiverData,
-      updatedAt: new Date().toISOString()
-    };
-    
-    return MOCK_CAREGIVERS[index];
+  if (updatedCaregiver) {
+    return updatedCaregiver;
   }
   
-  throw new Error(`Caregiver with ID ${caregiverId} not found`);
+  throw new Error(`Mock: Caregiver with ID ${caregiverId} not found for update`);
 };
 
 /**
@@ -780,13 +843,7 @@ firebaseService.getClientById = async (clientId) => {
   // Add slight delay to simulate network request
   await new Promise(resolve => setTimeout(resolve, 300));
   
-  const client = MOCK_CLIENTS.find(client => client.id === clientId);
-  
-  if (client) {
-    return { ...client, id: clientId };
-  }
-  
-  return null;
+  return clientsStore.findById(clientId);
 };
 
 /**
@@ -799,7 +856,7 @@ firebaseService.getAllClients = async () => {
   // Add slight delay to simulate network request
   await new Promise(resolve => setTimeout(resolve, 300));
   
-  return MOCK_CLIENTS.map(client => ({ ...client }));
+  return clientsStore.get();
 };
 
 /**
@@ -813,18 +870,14 @@ firebaseService.createClient = async (clientData) => {
   // Add slight delay to simulate network request
   await new Promise(resolve => setTimeout(resolve, 500));
   
-  // Generate a new ID
-  const newClient = {
-    id: `client-${Date.now()}`,
+  // id will be generated by store if not present in clientData
+  const newClientData = {
     ...clientData,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
   
-  // Add to mock data
-  MOCK_CLIENTS.push(newClient);
-  
-  return newClient;
+  return clientsStore.add(newClientData);
 };
 
 /**
@@ -839,20 +892,17 @@ firebaseService.updateClient = async (clientId, clientData) => {
   // Add slight delay to simulate network request
   await new Promise(resolve => setTimeout(resolve, 500));
   
-  // Find and update the client in our mock data
-  const index = MOCK_CLIENTS.findIndex(client => client.id === clientId);
+  const updatedClientData = {
+    ...clientData,
+    updatedAt: new Date().toISOString()
+  };
+  const updatedClient = clientsStore.update(clientId, updatedClientData);
   
-  if (index !== -1) {
-    MOCK_CLIENTS[index] = {
-      ...MOCK_CLIENTS[index],
-      ...clientData,
-      updatedAt: new Date().toISOString()
-    };
-    
-    return MOCK_CLIENTS[index];
+  if (updatedClient) {
+    return updatedClient;
   }
   
-  throw new Error(`Client with ID ${clientId} not found`);
+  throw new Error(`Mock: Client with ID ${clientId} not found for update`);
 };
 
 /**

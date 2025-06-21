@@ -40,20 +40,22 @@ class FirebaseService {
         }
       }
       
-      // If not found in environment, check for path in environment or use default
+      // If not found in environment, check for path in environment
       if (!serviceAccount) {
-        const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH || 
-          path.join(process.cwd(), 'carewurx-firebase-adminsdk-fbsvc-e7fcc4b08e.json');
+        const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
           
-        if (fs.existsSync(serviceAccountPath)) {
+        if (serviceAccountPath && fs.existsSync(serviceAccountPath)) {
           try {
             serviceAccount = require(serviceAccountPath);
             console.log(`Using Firebase credentials from ${serviceAccountPath}`);
           } catch (requireError) {
-            throw new Error(`Failed to load service account file: ${requireError.message}`);
+            throw new Error(`Failed to load service account file from path specified in FIREBASE_SERVICE_ACCOUNT_PATH: ${requireError.message}`);
           }
+        } else if (serviceAccountPath) {
+          throw new Error(`Firebase service account file not found at path specified in FIREBASE_SERVICE_ACCOUNT_PATH: ${serviceAccountPath}`);
         } else {
-          throw new Error(`Firebase service account file not found at ${serviceAccountPath}`);
+          // If neither FIREBASE_SERVICE_ACCOUNT nor FIREBASE_SERVICE_ACCOUNT_PATH is set
+          throw new Error('Firebase Admin SDK credentials not found. Set FIREBASE_SERVICE_ACCOUNT or FIREBASE_SERVICE_ACCOUNT_PATH environment variables.');
         }
       }
       
