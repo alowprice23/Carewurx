@@ -185,6 +185,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     } catch (error) {
       throw new Error('Sign out failed');
     }
+  },
+
+  // Groq API Key status for renderer (read-only via main process)
+  getGroqApiKeyStatus: async () => {
+    // Corresponds to an IPC handler in main.js that checks process.env.GROQ_API_KEY
+    return secureIPCInvoke('app:getGroqApiKeyStatus');
+  },
+  // Agent API Key validation
+  validateApiKey: async () => { // Added for API key validation for REALFLOW
+    return secureIPCInvoke('agent:validateApiKey');
   }
 });
 

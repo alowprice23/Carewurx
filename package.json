@@ -8,6 +8,7 @@
 "build:frontend": "cd frontend && npm install && npm run build",
     "lint": "eslint .",
     "test": "echo \"Error: no test specified\" && exit 1",
+    "realflow": "playwright test scripts/realflow.spec.ts",
     "test:e2e": "playwright test",
     "build": "electron-builder",
     "seed": "node -e \"require('./services/seed-data').seedDatabase()\""

@@ -7,7 +7,7 @@
 
 const { app, BrowserWindow, ipcMain, session, protocol } = require('electron');
 const path = require('path');
-const fs = require('fs');
+// const fs = require('fs'); // fs usage for API key is removed
 const dotenv = require('dotenv');
 const agentManager = require('./agents/core/agent-manager');
 const scheduleScanner = require('./services/schedule-scanner');
@@ -117,7 +117,19 @@ app.on('ready', async () => {
     console.log('All services initialized successfully');
   } catch (error) {
     console.error('Failed to initialize services:', error);
+    // If agent manager initialization failed due to missing API key,
+    // send a specific error to the renderer or log appropriately.
+    if (error.name === 'MissingGroqKeyError') {
+      console.error("CRITICAL: GROQ_API_KEY is missing. Agent features will be disabled.");
+      // Optionally, inform the renderer process so it can display a message to the user.
+      // mainWindow.webContents.send('critical-error', 'GROQ_API_KEY_MISSING');
+    }
   }
+});
+
+// IPC handler for renderer to check API key status
+ipcMain.handle('app:getGroqApiKeyStatus', async () => {
+  return { isSet: !!process.env.GROQ_API_KEY };
 });
 
 /**
@@ -147,6 +159,35 @@ app.on('activate', () => {
 ipcMain.handle('agent:processMessage', async (event, userId, message) => {
   return await agentManager.processMessage(userId, message);
 });
+
+ipcMain.handle('agent:validateApiKey', async () => {
+  // This handler allows the REALFLOW script to check if the API key is loaded
+  try {
+    const llmService = agentManager.getLLMService(); // Assuming agentManager can provide this
+    if (llmService && llmService.apiKey) {
+      // Optionally, make a very small test call to Groq to truly validate
+      // For now, just checking if it's loaded in the service is sufficient
+      await llmService.client.chat.completions.create({
+        messages: [{ role: 'user', content: 'ping' }],
+        model: 'llama3-8b-8192', // smallest model for a quick ping
+        max_tokens: 1,
+      });
+      return { success: true, status: 'valid' };
+    }
+    return { success: false, status: 'missing_in_service' };
+  } catch (error) {
+    if (error.name === 'MissingGroqKeyError') {
+      return { success: false, status: 'missing_env_var', error: error.message };
+    }
+    // Check for specific Groq API errors (e.g., authentication failure)
+    if (error.status === 401) {
+        return { success: false, status: 'invalid_api_key', error: 'Groq API authentication failed. Key might be invalid or revoked.' };
+    }
+    console.error('API Key validation ping failed:', error);
+    return { success: false, status: 'validation_ping_failed', error: error.message };
+  }
+});
+
 
 // Enhanced Scheduler IPC
 ipcMain.handle('scheduler:createSchedule', async (event, scheduleData) => {

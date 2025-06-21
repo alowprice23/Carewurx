@@ -38,22 +38,9 @@ class AgentManager {
     console.log('Initializing Agent Manager...');
     
     try {
-      // Initialize the LLM service with API key
-      const apiKeyPath = path.join(process.cwd(), 'Groq API KEY.txt');
-      let apiKey = '';
-      
-      if (fs.existsSync(apiKeyPath)) {
-        apiKey = fs.readFileSync(apiKeyPath, 'utf8').trim();
-      } else {
-        console.error('Groq API key file not found. Looking for environment variable...');
-        apiKey = process.env.GROQ_API_KEY || '';
-      }
-      
-      if (!apiKey) {
-        throw new Error('No Groq API key found. Please provide an API key in "Groq API KEY.txt" or set the GROQ_API_KEY environment variable.');
-      }
-      
-      this.llmService = new LLMService(apiKey);
+      // Initialize the LLM service. It will use process.env.GROQ_API_KEY internally
+      // and throw MissingGroqKeyError if not set.
+      this.llmService = new LLMService();
       
       // Initialize agents
       this.agents.bruce = new Bruce(this.llmService);
@@ -67,8 +54,16 @@ class AgentManager {
       console.log('Agent Manager initialized successfully with agents: Bruce, Lexxi');
     } catch (error) {
       console.error('Failed to initialize Agent Manager:', error);
-      throw error;
+      // Propagate MissingGroqKeyError specifically if it occurs
+      if (error.name === 'MissingGroqKeyError') {
+        throw error;
+      }
+      throw new Error(`Agent Manager initialization failed: ${error.message}`);
     }
+  }
+
+  getLLMService() {
+    return this.llmService;
   }
 
   /**

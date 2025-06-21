@@ -8,9 +8,19 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+class MissingGroqKeyError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "MissingGroqKeyError";
+  }
+}
+
 class LLMService {
-  constructor(apiKey) {
-    this.apiKey = apiKey || process.env.GROQ_API_KEY;
+  constructor() {
+    this.apiKey = process.env.GROQ_API_KEY;
+    if (!this.apiKey) {
+      throw new MissingGroqKeyError("GROQ_API_KEY is not set in environment variables.");
+    }
     this.model = 'llama3-70b-8192';
     
     // Initialize the Groq client
