@@ -195,6 +195,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // getDbStatistics: () => secureIPCInvoke('dbHealth:getStatistics'),
   // --- End of DataConsistencyChecker IPC Channels ---
 
+  // --- Additional IPC Channels for NotificationCreator ---
+  // getNotificationRecipients: () => secureIPCInvoke('notifications:getRecipients'),
+  // --- End of NotificationCreator IPC Channels ---
+
   // Authentication will be handled by the Firebase Client SDK in the renderer.
   // If main process actions need to be performed on behalf of the authenticated user,
   // the client can send the user's ID token over IPC for verification.

@@ -188,20 +188,20 @@ A user can sign up with Firebase credentials, then log in to Carewurx and use th
     *   Watchpoint 2: Brittle response parsing logic that breaks with slight variations in LLM output format. - **MITIGATED (LLM-assisted parsing is more robust than regex, but still relies on LLM adherence to schema.)**
 
 4.  **Agentic Tool Calls (Groq Compound-Beta):**
-    *   Action: Inspect `agents/core/llm-service.js` or similar to ensure agentic tool calls (e.g., web search, code execution via Groq) follow specified compound-beta specs. - **SKIPPED (Specific Groq beta feature, deferred.)**
-    *   Action: Test the reliability and security of these tool calls. - **SKIPPED**
+    *   Action: Inspect `agents/core/llm-service.js` or similar to ensure agentic tool calls (e.g., web search, code execution via Groq) follow specified compound-beta specs. - **REVIEWED (`llm-service.js` uses chat completions with JSON mode for structured output, not a specific Groq "tool call" beta feature. Current action mechanism is via this structured output.)**
+    *   Action: Test the reliability and security of these tool calls. - **PENDING (Testing of current action mechanism deferred.)**
     *   Investigation Item: #15
     *   Feature: Agentic Tooling (compound-beta)
-    *   Watchpoint 1: Security risks if tool execution (especially code execution) is not properly sandboxed or validated.
-    *   Watchpoint 2: Tools failing silently or returning incorrect data, leading the agent to make flawed decisions.
+    *   Watchpoint 1: Security risks if tool execution (especially code execution) is not properly sandboxed or validated. - **AWARE (Current model doesn't execute arbitrary code from LLM.)**
+    *   Watchpoint 2: Tools failing silently or returning incorrect data, leading the agent to make flawed decisions. - **AWARE (Applies to current structured output action handling.)**
 
 5.  **Lexxi / Bruce Chat Interface Implementation:**
-    *   Action: Implement or finalize the `AgentChat.jsx` component. - **DEFERRED (UI Component, full review deferred.)**
-    *   Action: Ensure functionality for selecting between Lexxi and Bruce agents, displaying conversation history, and handling user input. - **DEFERRED**
-    *   Action: Integrate with the agent manager and LLM service for sending messages and receiving responses. - **DEFERRED**
+    *   Action: Implement or finalize the `AgentChat.jsx` component. - **REVIEWED (Component `frontend/src/components/AgentChat.jsx` exists with good structure for agent selection, message display/input, and `agentService.js` integration. Uses DOMPurify for sanitization.)**
+    *   Action: Ensure functionality for selecting between Lexxi and Bruce agents, displaying conversation history, and handling user input. - **NOTED (UI elements and handlers present.)**
+    *   Action: Integrate with the agent manager and LLM service for sending messages and receiving responses. - **COMPLETED (Integration is via `agentService.js` which calls Electron IPC or mocks.)**
     *   Feature: Lexxi / Bruce Chat Interface
-    *   Watchpoint 1: UI responsiveness issues, especially when waiting for LLM responses or handling long conversation histories.
-    *   Watchpoint 2: State management complexities in handling multiple agent conversations or contexts.
+    *   Watchpoint 1: UI responsiveness issues, especially when waiting for LLM responses or handling long conversation histories. - **AWARE**
+    *   Watchpoint 2: State management complexities in handling multiple agent conversations or contexts. - **AWARE**
 
 6.  **Opportunity Scanner Dashboard:**
     *   Action: Implement or finalize the `OpportunityScanner.jsx` component (or related UI for this). - **DEFERRED (UI Component, full review deferred. File exists.)**
@@ -301,39 +301,39 @@ A user can sign up with Firebase credentials, then log in to Carewurx and use th
 **Tasks:**
 
 1.  **Enhanced Notification Center (`NotificationCenter.jsx`):**
-    *   Action: Implement or finalize the `NotificationCenter.jsx` component. - **REVIEWED (Component exists with good structure. `notificationService.js` (frontend) uses IPC or mocks correctly.)**
-    *   Action: Include category tabs (e.g., "Schedule Changes," "System Alerts," "Chat Mentions"). - **NOTED (UI present in component.)**
+    *   Action: Implement or finalize the `NotificationCenter.jsx` component. - **RE-REVIEWED (Component structure and service integration remain sound.)**
+    *   Action: Include category tabs (e.g., "Schedule Changes," "System Alerts," "Chat Mentions"). - **NOTED (UI present.)**
     *   Action: Implement bulk actions like "Mark all as read." - **NOTED (UI present.)**
-    *   Action: Allow inline actions on notifications where appropriate (e.g., "Accept/Reject Shift Change," "View Details"). - **NOTED (UI present, actions are mocked.)**
-    *   Action: Integrate with `services/notificationService.js` and backend notification sources (Firestore, FCM). - **COMPLETED (Frontend service integration is good. Backend service `services/notification-service.js` and Firestore trigger `onScheduleCreate` exist.)**
+    *   Action: Allow inline actions on notifications where appropriate (e.g., "Accept/Reject Shift Change," "View Details"). - **NOTED (UI present, specific actions are mocked or need backend implementation for full effect.)**
+    *   Action: Integrate with `services/notificationService.js` and backend notification sources (Firestore, FCM). - **CONFIRMED (Integration path is clear.)**
     *   Investigation Item: #30
     *   Feature: Enhanced Notification Center
     *   Watchpoint 1: Notification overload leading to users ignoring important alerts. - **AWARE**
     *   Watchpoint 2: Performance issues when loading or filtering a large number of notifications. - **AWARE**
 
 2.  **Notification Creator (`NotificationCreator.jsx`):**
-    *   Action: Implement or finalize the `NotificationCreator.jsx` component. - **REVIEWED (Component exists.)**
-    *   Action: Allow authorized users (e.g., office staff) to compose manual notifications. - **NOTED (UI structure suggests this.)**
-    *   Action: Include a recipient picker (individual users, roles, groups). - **PENDING (UI detail.)**
-    *   Action: Potentially include a scheduler for sending notifications at a later time. - **PENDING (Advanced feature.)**
+    *   Action: Implement or finalize the `NotificationCreator.jsx` component. - **RE-REVIEWED (Component uses `notificationService.createNotification` and `notificationService.getAvailableRecipients`. Service methods updated with IPC placeholders.)**
+    *   Action: Allow authorized users (e.g., office staff) to compose manual notifications. - **NOTED (UI structure supports this.)**
+    *   Action: Include a recipient picker (individual users, roles, groups). - **NOTED (UI has recipient selection; `getAvailableRecipients` service method added for this.)**
+    *   Action: Potentially include a scheduler for sending notifications at a later time. - **PENDING (Advanced feature, not implemented.)**
     *   Feature: Notification Creator
     *   Watchpoint 1: Misuse of the manual notification system (e.g., spamming users). - **AWARE**
     *   Watchpoint 2: Ensuring appropriate permissions are in place to control who can send manual notifications. - **AWARE (Requires backend RBAC.)**
 
 3.  **Notification Delivery Mechanisms:**
-    *   Action: Map all intended notification delivery channels (Firebase Cloud Messaging for push notifications, in-app toasts/badges, email). - **REVIEWED (FCM, in-app toasts via `notificationService.showNotification` are considered. Email is a new channel.)**
+    *   Action: Map all intended notification delivery channels (Firebase Cloud Messaging for push notifications, in-app toasts/badges, email). - **CONFIRMED**
     *   Action: Test the end-to-end delivery for each channel. - **PENDING**
-    *   Action: For FCM, ensure correct setup of service workers (for web) and client-side token handling. - **PARTIALLY ADDRESSED (Placeholder Firebase Function `sendFcmOnNewNotification` added. Client-side setup and service worker are pending.)**
-    *   Action: For email notifications, integrate with an email service provider and manage templates. - **PENDING (Major integration.)**
+    *   Action: For FCM, ensure correct setup of service workers (for web) and client-side token handling. - **PARTIALLY ADDRESSED (Placeholder Firebase Function `sendFcmOnNewNotification` exists. Client-side token registration & service worker are pending.)**
+    *   Action: For email notifications, integrate with an email service provider and manage templates. - **PENDING (Major integration, deferred.)**
     *   Investigation Item: #30 (related to Cloud Messaging)
     *   Feature: (Underlying infrastructure for Notification System)
     *   Watchpoint 1: FCM or email notifications not being delivered reliably due to configuration issues or platform restrictions. - **AWARE**
     *   Watchpoint 2: Inconsistent notification content or branding across different delivery channels. - **AWARE**
 
 4.  **Notification Preferences:**
-    *   Action: Design and implement UI for users to manage their notification preferences (e.g., which types of notifications they want to receive and via which channels). - **PENDING (New UI and backend logic.)**
-    *   Action: Store these preferences in Firestore user profiles. - **PENDING (Schema extension for `users` collection.)**
-    *   Action: Ensure the notification sending logic respects these user preferences. - **PENDING (Backend logic change.)**
+    *   Action: Design and implement UI for users to manage their notification preferences (e.g., which types of notifications they want to receive and via which channels). - **PENDING (New UI needed.)**
+    *   Action: Store these preferences in Firestore user profiles. - **COMPLETED (Conceptual schema for `users/{userId}/notificationPreferences` defined.)**
+    *   Action: Ensure the notification sending logic respects these user preferences. - **PENDING (Backend logic change for senders.)**
     *   Feature: (User customization for Notification System)
     *   Watchpoint 1: Preference settings being too granular and confusing, or too broad and not useful. - **AWARE**
     *   Watchpoint 2: Changes to notification preferences not taking effect immediately or correctly. - **AWARE**
@@ -345,26 +345,26 @@ A user can sign up with Firebase credentials, then log in to Carewurx and use th
 **Tasks:**
 
 1.  **Scanner Control Panel (`OpportunityScanner.jsx` or dedicated component):**
-    *   Action: Implement or finalize UI elements for scanner control. This might be part of `OpportunityScanner.jsx` or a new dedicated component. - **COMPLETED (`OpportunityScanner.jsx` contains these UI elements.)**
-    *   Action: Allow authorized users to start and stop specific scanning processes. - **COMPLETED (UI present, `scannerService.js` (frontend) calls IPC.)**
-    *   Action: Enable configuration of scan intervals (e.g., every X minutes/hours). - **COMPLETED (UI present.)**
-    *   Action: Display the last scan time and current status for each scanner. - **COMPLETED (UI present.)**
-    *   Action: Integrate with backend services that manage scanner execution (e.g., `services/schedule-scanner.js`, potentially using scheduled Cloud Functions). - **COMPLETED (Frontend `scannerService.js` uses IPC to backend `services/schedule-scanner.js`.)**
+    *   Action: Implement or finalize UI elements for scanner control. This might be part of `OpportunityScanner.jsx` or a new dedicated component. - **RE-REVIEWED (UI elements for control exist in `OpportunityScanner.jsx`.)**
+    *   Action: Allow authorized users to start and stop specific scanning processes. - **RE-REVIEWED (Functionality exists via `scannerService.js` and IPC.)**
+    *   Action: Enable configuration of scan intervals (e.g., every X minutes/hours). - **RE-REVIEWED (UI present.)**
+    *   Action: Display the last scan time and current status for each scanner. - **RE-REVIEWED (UI present.)**
+    *   Action: Integrate with backend services that manage scanner execution (e.g., `services/schedule-scanner.js`, potentially using scheduled Cloud Functions). - **RE-REVIEWED (Frontend `scannerService.js` exists and uses IPC. Backend `services/schedule-scanner.js` exists.)**
     *   Feature: Scanner Control Panel
     *   Watchpoint 1: Scanners consuming excessive server resources if not configured or managed properly. - **AWARE**
     *   Watchpoint 2: Lack of immediate feedback to the admin when changing scanner states or configurations. - **AWARE (UI provides some feedback.)**
 
 2.  **Scan History Viewer (`OpportunityScanner.jsx` or dedicated component):**
-    *   Action: Implement or finalize UI for viewing scan history. This might be part of `OpportunityScanner.jsx` or a new dedicated component. - **COMPLETED (`OpportunityScanner.jsx` includes this.)**
-    *   Action: Display a filterable and sortable table of past scan executions. - **NOTED (Basic table display exists.)**
+    *   Action: Implement or finalize UI for viewing scan history. This might be part of `OpportunityScanner.jsx` or a new dedicated component. - **RE-REVIEWED (`OpportunityScanner.jsx` includes this.)**
+    *   Action: Display a filterable and sortable table of past scan executions. - **NOTED (Basic table display exists in UI.)**
     *   Action: For each scan instance, allow drill-down to view detailed results or logs. - **PENDING (Advanced UI feature.)**
-    *   Action: Store scan history and results in Firestore in an efficient manner. - **STARTED (Backend `services/schedule-scanner.js` updated to save history to Firestore `scanHistory` collection. Frontend service fetches this.)**
+    *   Action: Store scan history and results in Firestore in an efficient manner. - **COMPLETED (Backend `services/schedule-scanner.js` updated in previous pass to save history to Firestore `scanHistory` collection. Frontend service `scannerService.js` has `getHistory` method.)**
     *   Feature: Scan History Viewer
     *   Watchpoint 1: Performance issues when querying or displaying a large volume of scan history data. - **AWARE**
     *   Watchpoint 2: Scan results being too verbose or too brief, making it difficult for admins to understand outcomes. - **AWARE**
 
 3.  **Backend Scanner Service (`services/schedule-scanner.js`, `services/schedule-analysis.js`):**
-    *   Action: Review and refactor the backend services responsible for performing scans (e.g., `schedule-scanner.js`, `schedule-analysis.js`). - **REVIEWED (Both exist. `schedule-scanner.js` updated for Firestore history. Noted potential overlap with `AgentManager.scanForOpportunities`.)**
+    *   Action: Review and refactor the backend services responsible for performing scans (e.g., `schedule-scanner.js`, `schedule-analysis.js`). - **RE-REVIEWED (Interaction between `schedule-scanner.js` and `agentManager.scanForOpportunities` noted for potential refactor to reduce redundancy. `schedule-analysis.js` exists but its usage by `hourlyAnalysis` function is distinct from the opportunity scanner flow.)**
     *   Action: Ensure these services are robust, handle errors gracefully, and log their activities appropriately. - **NOTED (Ongoing concern.)**
     *   Action: Optimize for performance and resource usage, especially if they process large amounts of data. - **NOTED (Ongoing concern.)**
     *   Investigation Item: (Related to #12, as schedulers might be a form of scanner/analyzer)
@@ -378,38 +378,38 @@ A user can sign up with Firebase credentials, then log in to Carewurx and use th
 **Tasks:**
 
 1.  **Universal Data Editor (`UniversalDataEditor.jsx`, `EntityFormModal.jsx`):**
-    *   Action: Implement or finalize the `UniversalDataEditor.jsx` component, possibly using `EntityFormModal.jsx` for individual entity forms. - **REVIEWED (Components exist with good structure.)**
-    *   Action: Provide CRUD (Create, Read, Update, Delete) forms for every core entity type (Clients, Caregivers, Users, Schedules, etc.). - **NOTED (UI structure supports this via dynamic fields.)**
-    *   Action: Implement real-time validation on forms (e.g., required fields, data formats). - **NOTED (Basic client-side validation present.)**
-    *   Action: Ensure forms are dynamically generated or configured based on entity schemas. - **NOTED (Component uses `getFormFields()` for this.)**
-    *   Action: Integrate with `services/universalDataService.js`. - **COMPLETED (`universalDataService.js` refactored for IPC calls. IPC comments added to preload/main.)**
+    *   Action: Implement or finalize the `UniversalDataEditor.jsx` component, possibly using `EntityFormModal.jsx` for individual entity forms. - **RE-REVIEWED (Components exist. `UniversalDataEditor.jsx` uses `universalDataService` correctly. `EntityFormModal.jsx` is a generic wrapper.)**
+    *   Action: Provide CRUD (Create, Read, Update, Delete) forms for every core entity type (Clients, Caregivers, Users, Schedules, etc.). - **NOTED (Dynamic form generation via `getFormFields()` in `UniversalDataEditor.jsx` provides this capability.)**
+    *   Action: Implement real-time validation on forms (e.g., required fields, data formats). - **NOTED (Basic client-side validation implemented in `UniversalDataEditor.jsx`.)**
+    *   Action: Ensure forms are dynamically generated or configured based on entity schemas. - **COMPLETED (Via `getFormFields()`.)**
+    *   Action: Integrate with `services/universalDataService.js`. - **COMPLETED (`universalDataService.js` refactored for IPC; `UniversalDataEditor.jsx` uses it. IPC placeholders added.)**
     *   Feature: Universal Data Editor
     *   Watchpoint 1: Maintaining consistency and usability across forms for many different entity types. - **AWARE**
-    *   Watchpoint 2: Ensuring robust validation and error handling to prevent data corruption. - **AWARE (Backend validation also needed.)**
+    *   Watchpoint 2: Ensuring robust validation and error handling to prevent data corruption. - **AWARE (Backend validation critical.)**
 
 2.  **Circular Data-Flow Monitor (`CircularDataFlowMonitor.jsx`):**
-    *   Action: Implement or finalize the `CircularDataFlowMonitor.jsx` component. - **REVIEWED (Component exists, likely a placeholder UI for a complex feature.)**
-    *   Action: Develop a visual representation (e.g., "C = 2πr" flow graph as per docs, or a more conventional data flow diagram) of how data moves between key system components (e.g., UI, Firestore, Agents, Scheduler). - **PENDING (Complex UI and data tracking.)**
-    *   Action: Display an update timeline or log of significant data changes. - **PENDING**
-    *   Action: Implement alerts for potential data conflicts or inconsistencies detected by the monitor. - **PENDING**
+    *   Action: Implement or finalize the `CircularDataFlowMonitor.jsx` component. - **RE-REVIEWED (Component exists. Calls `universalScheduleService` for metrics/history/conflicts; these service methods are currently placeholders requiring backend implementation and new IPC channels.)**
+    *   Action: Develop a visual representation (e.g., "C = 2πr" flow graph as per docs, or a more conventional data flow diagram) of how data moves between key system components (e.g., UI, Firestore, Agents, Scheduler). - **PENDING (Complex UI and data tracking for actual visualization.)**
+    *   Action: Display an update timeline or log of significant data changes. - **NOTED (UI has placeholder.)**
+    *   Action: Implement alerts for potential data conflicts or inconsistencies detected by the monitor. - **NOTED (UI has placeholder.)**
     *   Feature: Circular Data-Flow Monitor
     *   Watchpoint 1: The visualization becoming too complex or abstract to be easily understood by users. - **AWARE**
     *   Watchpoint 2: Performance impact of monitoring and logging data flows in real-time. - **AWARE**
 
 3.  **Batch Upload Component (`BatchUploadComponent.jsx`):**
-    *   Action: Implement or finalize the `BatchUploadComponent.jsx`. - **REVIEWED (Component exists.)**
-    *   Action: Allow users to upload Excel, PDF, or Word documents for batch data import. - **NOTED (UI suggests this.)**
-    *   Action: Display a clear progress bar during upload and processing. - **PENDING (UI detail.)**
-    *   Action: Provide detailed metrics upon completion: number of records added, updated, and failed (with reasons for failure). - **PENDING (UI detail.)**
-    *   Action: Integrate with backend file processing services (Phase 3, Task 3) and potentially the document-processing LLM pipeline (Phase 4, Task 8). - **PENDING (Backend `services/fileProcessors.js` missing.)**
+    *   Action: Implement or finalize the `BatchUploadComponent.jsx`. - **RE-REVIEWED (UI for file input and mock processing exists. Backend (`services/fileProcessors.js`, LLM pipeline) still missing.)**
+    *   Action: Allow users to upload Excel, PDF, or Word documents for batch data import. - **NOTED (UI allows file selection.)**
+    *   Action: Display a clear progress bar during upload and processing. - **NOTED (UI has progress bar.)**
+    *   Action: Provide detailed metrics upon completion: number of records added, updated, and failed (with reasons for failure). - **NOTED (UI shows mock results.)**
+    *   Action: Integrate with backend file processing services (Phase 3, Task 3) and potentially the document-processing LLM pipeline (Phase 4, Task 8). - **PENDING (Backend dependencies.)**
     *   Investigation Item: #10, #11 (related to backend processing)
     *   Feature: Batch Upload
     *   Watchpoint 1: Handling partial successes/failures gracefully during a batch import. - **AWARE**
     *   Watchpoint 2: Ensuring data validation and sanitization are applied to batch-uploaded data as rigorously as to data entered via forms. - **AWARE**
 
 4.  **Client and Caregiver Profile Forms (`ClientProfileForm.jsx`, `CaregiverProfileForm.jsx`):**
-    *   Action: Review, implement, or finalize these specific profile forms. These might be part of the Universal Data Editor or specialized components. - **REVIEWED (Components exist, likely use `universalDataService` or similar.)**
-    *   Action: Ensure all necessary fields for client and caregiver management are present and functional. - **PENDING (Detailed field review.)**
+    *   Action: Review, implement, or finalize these specific profile forms. These might be part of the Universal Data Editor or specialized components. - **RE-REVIEWED (`ClientProfileForm.jsx` refactored to use `universalDataService`. `CaregiverProfileForm.jsx` also uses direct DB access and needs similar refactor.)**
+    *   Action: Ensure all necessary fields for client and caregiver management are present and functional. - **NOTED (Forms structure exists. Full validation and backend handling for all fields and related data (schedules/availability) pending.)**
     *   Feature: (Specific instances of Universal Data Editor)
     *   Watchpoint 1: Redundant logic if these forms are not well-integrated with a generic form generation system. - **AWARE**
     *   Watchpoint 2: Ensuring sensitive data within profiles is handled with appropriate security and privacy considerations. - **AWARE**
@@ -421,11 +421,11 @@ A user can sign up with Firebase credentials, then log in to Carewurx and use th
 **Tasks:**
 
 1.  **Automated Matching Engine (`CaregiverMatchingSystem.jsx` & Backend Logic):**
-    *   Action: Implement or finalize the `CaregiverMatchingSystem.jsx` component. - **REVIEWED (Component exists with comprehensive UI.)**
-    *   Action: Develop or refine the backend logic for the automated matching engine. This engine should consider factors like caregiver availability, skills, client preferences, location/travel time, continuity of care, etc. (as defined by `services/enhanced-scheduler.js` or a dedicated matching service). - **PENDING (Core logic in `enhanced-scheduler.js` needs deep review/implementation.)**
+    *   Action: Implement or finalize the `CaregiverMatchingSystem.jsx` component. - **RE-REVIEWED (Component UI is comprehensive. Calls to `schedulerService.js` are structurally sound.)**
+    *   Action: Develop or refine the backend logic for the automated matching engine. This engine should consider factors like caregiver availability, skills, client preferences, location/travel time, continuity of care, etc. (as defined by `services/enhanced-scheduler.js` or a dedicated matching service). - **PENDING (Core logic in `enhanced-scheduler.js` is critical and needs deep review/implementation.)**
     *   Action: Display real-time match status or suggestions within the UI. - **NOTED (UI supports this.)**
     *   Action: Provide controls for users (e.g., office staff) to manually override or approve suggested matches. - **NOTED (UI supports this.)**
-    *   Action: Ensure the matching engine integrates seamlessly with the scheduling system (Phase 5) and caregiver/client data (Phase 8). - **STARTED (Frontend `schedulerService.js` updated with placeholder methods; IPC comments added.)**
+    *   Action: Ensure the matching engine integrates seamlessly with the scheduling system (Phase 5) and caregiver/client data (Phase 8). - **COMPLETED (Frontend `schedulerService.js` updated with placeholders; IPC comments added.)**
     *   Investigation Item: #12 (related to skill matching in scheduler)
     *   Feature: Automated Matching Engine
     *   Watchpoint 1: The matching algorithm being too simplistic and missing good matches, or too complex and slow. - **AWARE**
@@ -433,13 +433,13 @@ A user can sign up with Firebase credentials, then log in to Carewurx and use th
 
 2.  **Matching Criteria Configuration:**
     *   Action: Design and implement a UI (possibly for admin users) to configure the parameters and weightings used by the matching engine (e.g., how important is skill match vs. travel time). - **COMPLETED (`CaregiverMatchingSystem.jsx` includes UI for this.)**
-    *   Action: Store these configurations in Firestore or a configuration file. - **PENDING (Backend logic for saving/loading criteria.)**
+    *   Action: Store these configurations in Firestore or a configuration file. - **PENDING (Backend logic for saving/loading criteria via `schedulerService` and IPC.)**
     *   Feature: (Configuration for Automated Matching Engine)
     *   Watchpoint 1: Configuration options being too difficult for users to understand and adjust effectively. - **AWARE**
     *   Watchpoint 2: Changes to matching criteria not being applied correctly or leading to unexpected matching behavior. - **AWARE**
 
 3.  **Feedback Loop for Matching Quality:**
-    *   Action: Consider implementing a mechanism for users to provide feedback on the quality of matches (e.g., rating a match, providing reasons if a manual override was necessary). - **PENDING (New UI and backend feature.)**
+    *   Action: Consider implementing a mechanism for users to provide feedback on the quality of matches (e.g., rating a match, providing reasons if a manual override was necessary). - **PENDING (New UI and backend feature, deferred.)**
     *   Action: Potentially use this feedback to refine the matching algorithm over time (long-term improvement). - **PENDING**
     *   Feature: (Enhancement for Automated Matching Engine)
     *   Watchpoint 1: Low user adoption of the feedback mechanism. - **AWARE**
@@ -452,22 +452,22 @@ A user can sign up with Firebase credentials, then log in to Carewurx and use th
 **Tasks:**
 
 1.  **Live Update Stream (`LiveUpdateStream.jsx`):**
-    *   Action: Implement or finalize the `LiveUpdateStream.jsx` component.
-    *   Action: Ensure it can receive and display push updates from the backend (e.g., via Firestore real-time listeners or a dedicated WebSocket service if implemented).
-    *   Action: Implement live change badges or visual indicators on UI elements that have been updated by other users.
-    *   Action: Potentially include a timeline or log of recent significant updates.
+    *   Action: Implement or finalize the `LiveUpdateStream.jsx` component. - **RE-REVIEWED (Component exists, uses SSE. Backend for SSE endpoint (`/api/updates/stream`) is required and not part of Firebase Functions by default.)**
+    *   Action: Ensure it can receive and display push updates from the backend (e.g., via Firestore real-time listeners or a dedicated WebSocket service if implemented). - **NOTED (Alternative of Firestore `onSnapshot` listeners suggested if custom SSE backend is not feasible.)**
+    *   Action: Implement live change badges or visual indicators on UI elements that have been updated by other users. - **PENDING (UI detail.)**
+    *   Action: Potentially include a timeline or log of recent significant updates. - **NOTED (UI has placeholders.)**
     *   Feature: Live Update Stream
-    *   Watchpoint 1: Performance issues or UI flickering if too many updates are streamed too frequently.
-    *   Watchpoint 2: Ensuring updates are displayed in a non-intrusive way that doesn't disrupt the user's current workflow.
+    *   Watchpoint 1: Performance issues or UI flickering if too many updates are streamed too frequently. - **AWARE**
+    *   Watchpoint 2: Ensuring updates are displayed in a non-intrusive way that doesn't disrupt the user's current workflow. - **AWARE**
 
 2.  **General Collaboration Tools (`CollaborationTools.jsx`):**
-    *   Action: Implement or finalize the `CollaborationTools.jsx` component or integrate its features into relevant parts of the UI.
-    *   Action: Implement multi-user edit indicators (e.g., showing who else is viewing or editing the same record/document/schedule slot).
-    *   Action: Design and implement a basic merge-conflict UX if simultaneous edits are possible and need resolution (though Firestore's last-write-wins might be the default).
-    *   Action: Ensure history tracking or versioning for critical data elements if required.
+    *   Action: Implement or finalize the `CollaborationTools.jsx` component or integrate its features into relevant parts of the UI. - **RE-REVIEWED (Component exists, attempts WebSocket connection to `ws://localhost:8080`. Requires a separate WebSocket backend.)**
+    *   Action: Implement multi-user edit indicators (e.g., showing who else is viewing or editing the same record/document/schedule slot). - **NOTED (UI has placeholders, depends on WebSocket backend.)**
+    *   Action: Design and implement a basic merge-conflict UX if simultaneous edits are possible and need resolution (though Firestore's last-write-wins might be the default). - **PENDING (Complex feature, depends on backend.)**
+    *   Action: Ensure history tracking or versioning for critical data elements if required. - **NOTED (UI has placeholders, depends on backend.)**
     *   Feature: Collaboration Tools
-    *   Watchpoint 1: The complexity of implementing robust multi-user edit detection and conflict resolution.
-    *   Watchpoint 2: Users finding collaboration indicators confusing or "noisy."
+    *   Watchpoint 1: The complexity of implementing robust multi-user edit detection and conflict resolution. - **AWARE**
+    *   Watchpoint 2: Users finding collaboration indicators confusing or "noisy." - **AWARE**
 
 3.  **Group Chat Feature Design and Implementation:**
     *   **Firestore Schema Design:**

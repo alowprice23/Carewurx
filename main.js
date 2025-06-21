@@ -398,6 +398,16 @@ ipcMain.handle('firebase:getCircularEntities', async (event, entityType, filter)
 // ipcMain.handle('dbHealth:getStatistics', async (event) => { /* ... */ });
 // --- End of DataConsistencyChecker IPC Handlers ---
 
+// --- Additional IPC Handlers for NotificationCreator ---
+// ipcMain.handle('notifications:getRecipients', async (event) => {
+//   // const users = await firebaseService.getDocuments('users', { fields: ['name'] });
+//   // const clients = await firebaseService.getDocuments('clients', { fields: ['name'] });
+//   // const caregivers = await firebaseService.getDocuments('caregivers', { fields: ['name'] });
+//   // return [...users.map(u=>({id:u.id, name:u.name, type:'user'})), ...];
+//   return []; // Placeholder
+// });
+// --- End of NotificationCreator IPC Handlers ---
+
 // Note: The mock 'auth:*' IPC handlers have been removed.
 // Authentication is now handled by the Firebase Client SDK in the renderer (Login.jsx).
 // If main process actions need to be performed on behalf of an authenticated user,

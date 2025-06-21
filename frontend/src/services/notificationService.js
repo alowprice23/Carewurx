@@ -329,6 +329,31 @@ class NotificationService {
       throw error;
     }
   }
+
+  /**
+   * Get available recipients for notifications (users, clients, caregivers)
+   * @returns {Promise<Array>} List of recipient objects { id, name, type }
+   */
+  async getAvailableRecipients() {
+    try {
+      if (this.isElectronAvailable && window.electronAPI.getNotificationRecipients) {
+        return await window.electronAPI.getNotificationRecipients();
+      } else {
+        console.warn('NotificationService.getAvailableRecipients: Electron API not available. Returning mock data.');
+        // Mock data for browser mode
+        return [
+          { id: 'user-admin-1', name: 'Admin User', type: 'admin' },
+          { id: 'cg-123', name: 'Caregiver Alice', type: 'caregiver' },
+          { id: 'cg-456', name: 'Caregiver Bob', type: 'caregiver' },
+          { id: 'client-abc', name: 'Client John D.', type: 'client' },
+          { id: 'client-def', name: 'Client Jane S.', type: 'client' },
+        ];
+      }
+    } catch (error) {
+      console.error('Error getting available recipients:', error);
+      throw error;
+    }
+  }
 }
 
 // Create and export singleton instance
