@@ -342,7 +342,7 @@ ipcMain.handle('scheduler:optimizeSchedules', async (event, date) => {
 ipcMain.handle('firebase:updateCircularEntity', async (event, entityType, entityId, data) => {
   const result = await firebaseService.updateDocument(entityType, entityId, data);
   // Publish the update to the real-time system to ensure circular data flow
-  const realTimeUpdatesService = require('./app/services/real-time-updates');
+  const realTimeUpdatesService = require('./services/real-time-updates');
   await realTimeUpdatesService.publish(entityType, { id: entityId, ...data }, 'ipc-channel');
   return result;
 });

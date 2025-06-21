@@ -10,6 +10,7 @@ Here is a list of identified defects, their symptoms, proposed fixes, estimated 
     *   **Proposed Fix:** Modify `services/firebase.js` to initialize Firebase Admin SDK from environment variables (e.g., `GOOGLE_APPLICATION_CREDENTIALS` pointing to the key file path, or by parsing a base64 encoded key from an environment variable like `FIREBASE_ADMIN_SDK_JSON_BASE64`). Ensure the actual key file is not in the repository.
     *   **Effort:** M
     *   **Priority:** Blocking ✔
+    *   **Status:** ✔ Done (Commit: `fix/firebase-admin-env-var`)
 
 2.  **Hardcoded Firebase Client SDK Config**
     *   **File(s):** `frontend/src/services/firebase.js`.
@@ -17,6 +18,7 @@ Here is a list of identified defects, their symptoms, proposed fixes, estimated 
     *   **Proposed Fix:** Utilize environment variables for the React app (prefixed with `REACT_APP_`, e.g., `REACT_APP_FIREBASE_API_KEY`). These variables will be embedded during the build process. Update `frontend/src/services/firebase.js` to use these `process.env.REACT_APP_...` variables.
     *   **Effort:** M
     *   **Priority:** Blocking ✔
+    *   **Status:** ⚠ BLOCKED - Frontend linting (`eslint src/**/*.{js,jsx}` within `frontend/`) fails with "Parsing error: 'import' and 'export' may appear only with 'sourceType: module'" even after `npm install` in `frontend/`. This seems to be a deeper ESLint configuration issue (related to Defect #9) preventing satisfaction of G-2. Code changes made, but cannot commit.
 
 3.  **Outdated Firebase Client SDK (v8)**
     *   **File(s):** `frontend/src/services/firebase.js`, `frontend/src/services/firebaseService.js`, and any components directly using Firebase v8 syntax. `frontend/package.json` shows `firebase: "^8.6.8"`.
@@ -35,10 +37,11 @@ Here is a list of identified defects, their symptoms, proposed fixes, estimated 
 
 5.  **Direct Groq API Call from Frontend**
     *   **File(s):** `FRONTEND_INTEGRATION_PLAN.md` mentions a direct `fetch` to Groq API. This pattern might be implemented in components like `frontend/src/components/AgentChat.jsx`, `frontend/src/components/ResponseStreamingUI.jsx`, or related frontend services.
-    *   **Symptom:** Frontend JavaScript code makes direct HTTP calls to the Groq API endpoints. This requires the Groq API key to be exposed/handled on the client-side, which is a security risk.
+    *   **Symptom:** Frontend JavaScript code makes direct HTTP calls to the Groq API endpoints. This requires the Groq API key to be exposed/handled on the client-side, which is a security risk. (Initial concern based on planning documents).
     *   **Proposed Fix:** Refactor frontend components/services to make requests to the Electron backend (main process) via IPC (e.g., using a preload script and `ipcRenderer.invoke`). The Electron backend will then securely make the API call to Groq using the `GROQ_API_KEY` environment variable and return the response to the frontend.
     *   **Effort:** M
     *   **Priority:** Non-blocking (but high for security best practices)
+    *   **Status:** ✔ Done (Investigation revealed that the frontend (`AgentChat.jsx`, `ResponseStreamingUI.jsx`, `agentService.js`) already correctly delegates Groq-related calls to the Electron backend via `window.electronAPI` (IPC). No direct frontend-to-Groq HTTP calls found in the current code. The backend `llm-service.js` handles Groq calls and was addressed in Defect #4.)
 
 6.  **Potentially Unused `app/` Directory**
     *   **File(s):** Entire `app/` directory (includes `admin.html`, `admin.js`, `index.html`, `renderer.js`, `style.css`, `components/`, `services/`).
@@ -60,6 +63,7 @@ Here is a list of identified defects, their symptoms, proposed fixes, estimated 
     *   **Proposed Fix:** Implement a useful root test script. At a minimum, it should run the frontend tests: `cd frontend && npm test`. Ideally, it should also be configured to run any backend tests (e.g., for `services/` and `agents/` if/when they are added or improved).
     *   **Effort:** S
     *   **Priority:** Non-blocking
+    *   **Status:** ⚠ BLOCKED-FINAL - infrastructure - UNBLOCK C directive failed. Attempts to run frontend tests using `CI=true react-scripts test --watchAll=false --runInBand --detectOpenHandles --testTimeout=60000` still result in timeouts. Underlying Jest/test suite issue persists.
 
 9.  **Inconsistent ESLint Setup / Lack of Backend Linting**
     *   **File(s):** `eslint.config.js` (root), `frontend/.eslintrc.json`.
@@ -67,6 +71,7 @@ Here is a list of identified defects, their symptoms, proposed fixes, estimated 
     *   **Proposed Fix:** Consolidate ESLint configuration or enhance the root `eslint.config.js` to properly lint all JavaScript/JSX files across the project (root, `services/`, `agents/`, `frontend/src/`). This might involve choosing one config format or making them work together. Ensure consistent rules are applied.
     *   **Effort:** M
     *   **Priority:** Non-blocking
+    *   **Status:** ⚠ BLOCKED-FINAL - infrastructure - UNBLOCK B directive failed. Attempts to configure ESLint (renaming flat config, modifying `frontend/.eslintrc.json`, changing root lint script to target frontend) resulted in `npm run lint` timeout. Original ESLint configurations restored. This continues to block Defect #2.
 
 10. **Buggy `firebaseServiceMock.js`**
     *   **File(s):** `frontend/src/services/firebaseServiceMock.js`. (Identified from `ANALYSIS.md` and `DEEP_ANALYSIS.md`).
@@ -83,6 +88,7 @@ Here is a list of identified defects, their symptoms, proposed fixes, estimated 
         *   History Check (Long-term): Investigate git history for any accidental commits of this file. If found, it must be purged from history using tools like `git filter-repo` or BFG Repo-Cleaner. This is a complex operation and typically done as a separate, dedicated task. For now, the focus is on securing the current state.
     *   **Effort:** S (for immediate checks and reinforcing Defect #1), L (for history purge, deferred)
     *   **Priority:** Blocking ✔ (for ensuring current code doesn't use a local file and the file isn't in current staging/commit)
+    *   **Status:** ✔ Done (Immediate actions for current code completed via Defect #1 fix. Commit: `fix/firebase-admin-env-var`. History purge deferred.)
 
 12. **Empty `README.md`**
     *   **File(s):** `README.md` (at the repository root).
@@ -96,4 +102,5 @@ Here is a list of identified defects, their symptoms, proposed fixes, estimated 
         *   How to run linters and tests.
     *   **Effort:** M
     *   **Priority:** Non-blocking
+    *   **Status:** ⚠ BLOCKED-FINAL - infrastructure - Attempts to write to README.md using `overwrite_file_with_block` consistently fail, even with minimal content.
 ```
