@@ -5,7 +5,7 @@
  */
 
 const { firebaseService } = require('./firebase');
-const realTimeUpdatesService = require('../app/services/real-time-updates');
+const realTimeUpdatesService = require('./real-time-updates');
 const distanceCalculator = require('../utils/distance-calculator');
 
 class EnhancedScheduler {

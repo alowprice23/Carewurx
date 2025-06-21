@@ -75,12 +75,11 @@ function createWindow() {
       console.log('Absolute path:', absolutePath);
       
       // Add event listener to catch load failures
-      mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
-        console.error('Failed to load:', errorCode, errorDescription);
-      // Try fallback immediately with a secure approach
-      console.log('Attempting fallback to original app');
-      mainWindow.loadFile(path.join(__dirname, 'app/index.html'));
-    });
+      mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+        console.error(`Failed to load ${validatedURL}: ${errorDescription} (Code: ${errorCode})`);
+        // Consider showing a dedicated error page or message to the user
+        // For now, it will show a blank page or Electron's default error.
+      });
     
     // Add content loaded listener for logging only
     mainWindow.webContents.on('dom-ready', () => {
@@ -92,8 +91,8 @@ function createWindow() {
     }
   } catch (error) {
     console.error('Error loading frontend:', error);
-    // Fallback to the original app as a last resort
-    mainWindow.loadFile(path.join(__dirname, 'app/index.html'));
+    // If the primary load attempt fails, Electron will show an error or blank page.
+    // No explicit fallback to app/index.html here.
   }
 
 
@@ -342,7 +341,7 @@ ipcMain.handle('scheduler:optimizeSchedules', async (event, date) => {
 ipcMain.handle('firebase:updateCircularEntity', async (event, entityType, entityId, data) => {
   const result = await firebaseService.updateDocument(entityType, entityId, data);
   // Publish the update to the real-time system to ensure circular data flow
-  const realTimeUpdatesService = require('./app/services/real-time-updates');
+  const realTimeUpdatesService = require('./services/real-time-updates');
   await realTimeUpdatesService.publish(entityType, { id: entityId, ...data }, 'ipc-channel');
   return result;
 });

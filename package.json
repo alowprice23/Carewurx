@@ -6,8 +6,8 @@
   "scripts": {
 "start": "npm run build:frontend && electron .",
 "build:frontend": "cd frontend && npm install && npm run build",
-    "lint": "eslint .",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint . --config eslint.config.js && (cd frontend && npm run lint)",
+    "test": "cd frontend && npm test",
     "test:e2e": "playwright test",
     "build": "electron-builder",
     "seed": "node -e \"require('./services/seed-data').seedDatabase()\""
@@ -31,6 +31,9 @@
     "electron": "^25.0.0",
     "electron-builder": "^23.6.0",
     "eslint": "^9.29.0",
+    "eslint-plugin-jsx-a11y": "^6.8.0",
+    "eslint-plugin-react": "^7.34.1",
+    "eslint-plugin-react-hooks": "^4.6.2",
     "globals": "^16.2.0"
   }
 }

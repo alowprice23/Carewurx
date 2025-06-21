@@ -5,7 +5,7 @@
  */
 
 const { firebaseService } = require('./firebase');
-const realTimeUpdatesService = require('../app/services/real-time-updates');
+const realTimeUpdatesService = require('./real-time-updates');
 
 class NotificationService {
   constructor() {

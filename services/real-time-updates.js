@@ -4,6 +4,9 @@
  * Acts as the primary channel for propagating changes between components
  */
 
+const { firebaseService } = require('./firebase');
+const enhancedScheduler = require('./enhanced-scheduler');
+
 class RealTimeUpdatesService {
   constructor() {
     // Subscribers organized by entity type
@@ -255,7 +258,7 @@ class RealTimeUpdatesService {
     try {
       // Get related client and caregiver
       if (data.client_id) {
-        const client = await window.electronAPI.getClient(data.client_id);
+        const client = await firebaseService.getClient(data.client_id);
         if (client) {
           // Publish an update for the client with related schedule changes
           const clientUpdate = {
@@ -272,7 +275,7 @@ class RealTimeUpdatesService {
       }
       
       if (data.caregiver_id) {
-        const caregiver = await window.electronAPI.getCaregiver(data.caregiver_id);
+        const caregiver = await firebaseService.getCaregiver(data.caregiver_id);
         if (caregiver) {
           // Publish an update for the caregiver with related schedule changes
           const caregiverUpdate = {
@@ -289,7 +292,7 @@ class RealTimeUpdatesService {
       }
       
       // Check for scheduling conflicts and opportunities
-      const conflicts = await window.electronAPI.checkScheduleConflicts(data.id);
+      const conflicts = await enhancedScheduler.checkScheduleConflicts(data.id);
       if (conflicts && conflicts.length > 0) {
         // Create a notification for each conflict
         for (const conflict of conflicts) {
@@ -342,7 +345,7 @@ class RealTimeUpdatesService {
     
     try {
       // Get client's schedules
-      const schedules = await window.electronAPI.getSchedulesByClient(data.id);
+      const schedules = await firebaseService.getSchedulesByClientId(data.id);
       
       if (schedules && schedules.length > 0) {
         // Update each schedule with the latest client information
@@ -391,7 +394,7 @@ class RealTimeUpdatesService {
     
     try {
       // Get caregiver's schedules
-      const schedules = await window.electronAPI.getSchedulesByCaregiver(data.id);
+      const schedules = await firebaseService.getSchedulesByCaregiverId(data.id);
       
       if (schedules && schedules.length > 0) {
         // Update each schedule with the latest caregiver information
@@ -493,7 +496,7 @@ class RealTimeUpdatesService {
         // If accepted, update any related schedules
         if (data.status === 'accepted' && data.schedules && data.schedules.length > 0) {
           for (const scheduleId of data.schedules) {
-            const schedule = await window.electronAPI.getSchedule(scheduleId);
+            const schedule = await firebaseService.getSchedule(scheduleId);
             if (schedule) {
               const scheduleUpdate = {
                 ...schedule,

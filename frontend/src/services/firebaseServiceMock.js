@@ -1,11 +1,21 @@
 /**
  * Firebase Service Mock
- * 
- * This file extends the default firebaseService with mock implementations
- * of backend methods needed for the scheduling components.
+ *
+ * IMPORTANT: This mock service AUGMENTS the real firebaseService with a mock database (`db`)
+ * and direct data manipulation methods (e.g., createSchedule, getAllCaregivers)
+ * FOR TESTING PURPOSES ONLY.
+ *
+ * The REAL firebaseService (./firebaseService.js) primarily handles authentication by
+ * delegating to Electron IPC and does NOT expose a `db` object or direct data methods
+ * to the frontend.
+ *
+ * Tests using this mock for data operations are testing against an interface that differs
+ * from the production service's direct interface. This mock is intended to simulate
+ * the data layer that would otherwise be accessed via Electron IPC calls handled by
+ * backend services.
  */
 
-import firebaseService from './firebaseService';
+import firebaseService from './firebaseService'; // The real service (provides auth)
 
 // Create a mock Firestore-like structure to handle the db.collection() calls
 // that CaregiverProfileForm and ClientProfileForm are using
@@ -64,109 +74,114 @@ firebaseService.db = {
     return {
       get: async function() {
         console.log(`Mock: Getting all documents from ${collectionName}`);
-        
-        // Add slight delay to simulate network request
-        await new Promise(resolve => setTimeout(resolve, 300));
-        
+        await new Promise(resolve => setTimeout(resolve, 50)); // Simulating delay
+
         let results = [];
         if (collectionName === 'schedules') {
-          results = MOCK_SCHEDULES;
+          results = MOCK_SCHEDULES.map(doc => ({ ...doc })); // Return copies
         } else if (collectionName === 'clients') {
-          results = MOCK_CLIENTS;
+          results = MOCK_CLIENTS.map(doc => ({ ...doc })); // Return copies
         } else if (collectionName === 'caregivers') {
-          results = MOCK_CAREGIVERS;
+          results = MOCK_CAREGIVERS.map(doc => ({ ...doc })); // Return copies
+        } else {
+          console.warn(`Mock: Unhandled collection for get: ${collectionName}`);
+          // Return empty for unhandled collections or reject
         }
         
-        // Return mock query snapshot
-        return {
+        return Promise.resolve({
           empty: results.length === 0,
           docs: results.map(doc => ({
             id: doc.id,
-            data: () => ({ ...doc }),
+            data: () => ({ ...doc }), // Ensure this returns a fresh copy too
             exists: true,
-            ref: {
+            ref: { // Mock for ref.delete() if needed by tests
               delete: async () => {
-                if (collectionName === 'schedules') {
-                  const index = MOCK_SCHEDULES.findIndex(s => s.id === doc.id);
-                  if (index !== -1) {
-                    MOCK_SCHEDULES.splice(index, 1);
-                  }
+                console.log(`Mock: Deleting from ref ${collectionName}/${doc.id}`);
+                let targetArray;
+                if (collectionName === 'schedules') targetArray = MOCK_SCHEDULES;
+                else if (collectionName === 'clients') targetArray = MOCK_CLIENTS;
+                else if (collectionName === 'caregivers') targetArray = MOCK_CAREGIVERS;
+                else return Promise.reject(new Error('Unknown collection in ref.delete'));
+
+                const index = targetArray.findIndex(item => item.id === doc.id);
+                if (index !== -1) {
+                  targetArray.splice(index, 1);
+                  return Promise.resolve();
                 }
-                return { success: true };
+                return Promise.reject(new Error('Document not found in ref.delete'));
               }
             }
           }))
-        };
+        });
       },
-      add: async function(data) {
-        console.log(`Mock: Adding document to ${collectionName}`, data);
+      add: async function(dataToAdd) { // Renamed 'data' to 'dataToAdd' for clarity
+        console.log(`Mock: Adding document to ${collectionName}`, dataToAdd);
+        await new Promise(resolve => setTimeout(resolve, 50)); // Simulating delay
         
-        // Add slight delay to simulate network request
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // Generate a new ID
-        const id = `${collectionName}-${Date.now()}`;
-        
-        // Handle specific collections
-        if (collectionName === 'caregivers') {
-          // Add to mock caregivers
-          MOCK_CAREGIVERS.push({
-            id,
-            ...data
-          });
-        } else if (collectionName === 'clients') {
-          // Add to mock clients
-          MOCK_CLIENTS.push({
-            id,
-            ...data
-          });
-        } else if (collectionName === 'caregiver_availability') {
-          // Add to mock availability data
-          MOCK_AVAILABILITY[data.caregiverId] = {
-            ...data
-          };
-        } else if (collectionName === 'schedules') {
-          // Add to mock schedules
-          MOCK_SCHEDULES.push({
-            id,
-            ...data
-          });
+        const id = `${collectionName}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+        const newDocument = { ...dataToAdd, id }; // Create a copy before storing
+
+        let targetArray;
+        if (collectionName === 'caregivers') targetArray = MOCK_CAREGIVERS;
+        else if (collectionName === 'clients') targetArray = MOCK_CLIENTS;
+        else if (collectionName === 'schedules') targetArray = MOCK_SCHEDULES;
+        else if (collectionName === 'caregiver_availability') {
+          // caregiver_availability uses caregiverId as the key in MOCK_AVAILABILITY
+          if (newDocument.caregiverId) {
+            MOCK_AVAILABILITY[newDocument.caregiverId] = newDocument; // Store copy
+            return Promise.resolve({ id: newDocument.caregiverId }); // Firestore add returns a DocumentReference
+          } else {
+            console.error('Mock: caregiverId missing for caregiver_availability add operation', newDocument);
+            return Promise.reject(new Error('caregiverId missing for caregiver_availability add'));
+          }
+        } else {
+          console.error(`Mock: Unhandled collection for add: ${collectionName}`);
+          return Promise.reject(new Error(`Unhandled collection for add: ${collectionName}`));
         }
         
-        // Return mock document reference
-        return {
-          id
-        };
+        targetArray.push(newDocument);
+
+        return Promise.resolve({ id }); // Returns a Firestore-like DocumentReference (mocked)
       },
       doc: function(docId) {
         return {
           get: async function() {
             console.log(`Mock: Getting document from ${collectionName} with ID ${docId}`);
-            
-            // Add slight delay to simulate network request
-            await new Promise(resolve => setTimeout(resolve, 300));
-            
-            // Find the document based on collection
-            let data = null;
-            if (collectionName === 'caregivers') {
-              data = MOCK_CAREGIVERS.find(c => c.id === docId);
-            } else if (collectionName === 'clients') {
-              data = MOCK_CLIENTS.find(c => c.id === docId);
-            } else if (collectionName === 'caregiver_availability') {
-              data = MOCK_AVAILABILITY[docId];
-            } else if (collectionName === 'schedules') {
-              data = MOCK_SCHEDULES.find(s => s.id === docId);
-            }
-            
-            // Return mock document snapshot
-            return {
-              exists: !!data,
-              data: function() {
-                return data;
+            await new Promise(resolve => setTimeout(resolve, 50)); // Simulating delay
+
+            let DBMockArray;
+            if (collectionName === 'caregivers') DBMockArray = MOCK_CAREGIVERS;
+            else if (collectionName === 'clients') DBMockArray = MOCK_CLIENTS;
+            else if (collectionName === 'schedules') DBMockArray = MOCK_SCHEDULES;
+            else if (collectionName === 'caregiver_availability') {
+              const availabilityData = MOCK_AVAILABILITY[docId]; // docId is caregiverId here
+              if (availabilityData) {
+                return Promise.resolve({
+                  exists: true,
+                  id: docId,
+                  data: () => ({ ...availabilityData }) // Return a copy
+                });
+              } else {
+                return Promise.resolve({ exists: false, id: docId, data: () => undefined });
               }
-            };
+            } else {
+              console.error(`Mock: Unhandled collection for doc().get(): ${collectionName}`);
+              return Promise.resolve({ exists: false, id: docId, data: () => undefined });
+            }
+
+            const foundDoc = DBMockArray.find(doc => doc.id === docId);
+            
+            if (foundDoc) {
+              return Promise.resolve({
+                exists: true,
+                id: docId,
+                data: () => ({ ...foundDoc }) // Return a copy
+              });
+            } else {
+              return Promise.resolve({ exists: false, id: docId, data: () => undefined });
+            }
           },
-          update: async function(data) {
+          update: async function(dataToUpdate) { // Renamed 'data' to 'dataToUpdate'
             console.log(`Mock: Updating document in ${collectionName} with ID ${docId}`, data);
             
             // Add slight delay to simulate network request
