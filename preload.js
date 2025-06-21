@@ -149,43 +149,55 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateCircularEntity: (entityType, entityId, data) => secureIPCInvoke('firebase:updateCircularEntity', entityType, entityId, data),
   getCircularEntities: (entityType, filter) => secureIPCInvoke('firebase:getCircularEntities', entityType, filter),
   
-  // Authentication methods with secure parameter validation
-  getCurrentUser: async () => {
-    return await secureIPCInvoke('auth:getCurrentUser');
-  },
-  signIn: async (email, password) => {
-    // Don't log emails or passwords
-    if (!email || typeof email !== 'string' || !password || typeof password !== 'string') {
-      throw new Error('Invalid email or password format');
-    }
-    
-    try {
-      const result = await secureIPCInvoke('auth:signIn', email, password);
-      
-      // Safely notify about authentication state change
-      window.dispatchEvent(new CustomEvent('auth-state-change', { 
-        detail: { authenticated: true }
-      }));
-      
-      return result;
-    } catch (error) {
-      throw new Error('Authentication failed');
-    }
-  },
-  signOut: async () => {
-    try {
-      const result = await secureIPCInvoke('auth:signOut');
-      
-      // Safely notify about authentication state change
-      window.dispatchEvent(new CustomEvent('auth-state-change', { 
-        detail: { authenticated: false }
-      }));
-      
-      return result;
-    } catch (error) {
-      throw new Error('Sign out failed');
-    }
-  }
+  // --- IPC Channels for ConflictResolutionUI (to be implemented in main.js) ---
+  // getPendingConflicts: () => secureIPCInvoke('conflicts:getPending'),
+  // getResolvedConflicts: () => secureIPCInvoke('conflicts:getResolved'),
+  // getAllConflicts: () => secureIPCInvoke('conflicts:getAll'),
+  // getConflictResolutionHistory: () => secureIPCInvoke('conflicts:getHistory'),
+  // getConflictResolutionOptions: (conflictId) => secureIPCInvoke('conflicts:getOptions', conflictId),
+  // resolveConflict: (resolutionData) => secureIPCInvoke('conflicts:resolve', resolutionData),
+  // overrideConflict: (overrideData) => secureIPCInvoke('conflicts:override'),
+  // --- End of ConflictResolutionUI IPC Channels ---
+
+  // --- IPC Channels for ScheduleOptimizationControls (to be implemented in main.js) ---
+  // getSchedulesInRange: (params) => secureIPCInvoke('scheduler:getSchedulesInRange', params), // Note: getCircularEntities might be used by service
+  // getOptimizationHistory: () => secureIPCInvoke('scheduler:getOptimizationHistory'),
+  // runScheduleOptimization: (params) => secureIPCInvoke('scheduler:runOptimization', params), // Maps to optimizeSchedule in service
+  // applyOptimizedSchedule: (optimizationId) => secureIPCInvoke('scheduler:applyOptimization', optimizationId),
+  // getOptimizationDetails: (optimizationId) => secureIPCInvoke('scheduler:getOptimizationDetails', optimizationId),
+  // optimizeSchedules: (date) => secureIPCInvoke('scheduler:optimizeSchedulesByDate', date), // Original optimizeSchedules by date
+  // --- End of ScheduleOptimizationControls IPC Channels ---
+
+  // --- IPC Channels for CaregiverMatchingSystem (to be implemented in main.js, likely call enhancedScheduler) ---
+  // getMatchingHistory: () => secureIPCInvoke('scheduler:getMatchingHistory'),
+  // runAutomatedMatching: (params) => secureIPCInvoke('scheduler:runAutomatedMatching', params),
+  // applyMatches: (params) => secureIPCInvoke('scheduler:applyMatches', params),
+  // saveMatchingCriteria: (criteria) => secureIPCInvoke('scheduler:saveMatchingCriteria', criteria),
+  // getDefaultMatchingCriteria: () => secureIPCInvoke('scheduler:getDefaultMatchingCriteria'),
+  // getUnassignedClients: () => secureIPCInvoke('scheduler:getUnassignedClients'), // Might use data:getEntities
+  // getHistoricalMatches: (historyId) => secureIPCInvoke('scheduler:getHistoricalMatches', historyId),
+  // revertMatches: (historyId) => secureIPCInvoke('scheduler:revertMatches', historyId),
+  // --- End of CaregiverMatchingSystem IPC Channels ---
+
+  // --- IPC Channels for UniversalDataService (to be implemented in main.js) ---
+  // getEntities: (entityType, options) => secureIPCInvoke('data:getEntities', entityType, options),
+  // getEntity: (entityType, entityId) => secureIPCInvoke('data:getEntity', entityType, entityId),
+  // createEntity: (entityType, data) => secureIPCInvoke('data:createEntity', entityType, data),
+  // updateEntity: (entityType, entityId, data) => secureIPCInvoke('data:updateEntity', entityType, entityId, data),
+  // deleteEntity: (entityType, entityId) => secureIPCInvoke('data:deleteEntity', entityType, entityId),
+  // --- End of UniversalDataService IPC Channels ---
+
+  // --- IPC Channels for DataConsistencyChecker (to be implemented in main.js) ---
+  // getDbHealthStatus: () => secureIPCInvoke('dbHealth:getStatus'),
+  // runDbHealthCheck: (config) => secureIPCInvoke('dbHealth:runCheck', config),
+  // getDbInconsistencies: (filter) => secureIPCInvoke('dbHealth:getInconsistencies', filter),
+  // runDbRepairOperations: (selectedIds, repairConfig) => secureIPCInvoke('dbHealth:runRepairs', selectedIds, repairConfig),
+  // getDbStatistics: () => secureIPCInvoke('dbHealth:getStatistics'),
+  // --- End of DataConsistencyChecker IPC Channels ---
+
+  // Authentication will be handled by the Firebase Client SDK in the renderer.
+  // If main process actions need to be performed on behalf of the authenticated user,
+  // the client can send the user's ID token over IPC for verification.
 });
 
 // Only enable additional debugging in development mode

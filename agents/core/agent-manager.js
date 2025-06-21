@@ -8,8 +8,14 @@ const Bruce = require('../models/bruce');
 const Lexxi = require('../models/lexxi');
 const ContextBuilder = require('../utils/context-builder');
 const ResponseParser = require('../utils/response-parser');
-const fs = require('fs');
-const path = require('path');
+// const fs = require('fs'); // No longer needed for API key
+// const path = require('path'); // No longer needed for API key
+
+// Static dependencies (should be at the top)
+const { firebaseService } = require('../../services/firebase'); // Assuming this path is correct from agent's perspective
+const enhancedScheduler = require('../../services/enhanced-scheduler');
+const distanceCalculator = require('../../utils/distance-calculator');
+
 
 class AgentManager {
   constructor() {
@@ -38,19 +44,12 @@ class AgentManager {
     console.log('Initializing Agent Manager...');
     
     try {
-      // Initialize the LLM service with API key
-      const apiKeyPath = path.join(process.cwd(), 'Groq API KEY.txt');
-      let apiKey = '';
-      
-      if (fs.existsSync(apiKeyPath)) {
-        apiKey = fs.readFileSync(apiKeyPath, 'utf8').trim();
-      } else {
-        console.error('Groq API key file not found. Looking for environment variable...');
-        apiKey = process.env.GROQ_API_KEY || '';
-      }
+      // Initialize the LLM service with API key from environment variable
+      const apiKey = process.env.GROQ_API_KEY;
       
       if (!apiKey) {
-        throw new Error('No Groq API key found. Please provide an API key in "Groq API KEY.txt" or set the GROQ_API_KEY environment variable.');
+        console.error('GROQ_API_KEY environment variable not found.');
+        throw new Error('No Groq API key found. Please set the GROQ_API_KEY environment variable.');
       }
       
       this.llmService = new LLMService(apiKey);
@@ -300,36 +299,93 @@ class AgentManager {
    * @returns {Promise<void>}
    */
   async handleScheduleCreate(userId, parameters) {
-    console.log(`Creating schedule for user ${userId}:`, parameters);
-    
-    // This would connect to the schedule service
-    // For now, just log the action
+    console.log(`Agent action: Creating schedule for user ${userId} with params:`, parameters);
+    // Example parameters: { clientId, date, startTime, endTime, notes, requiredSkills }
+    if (!parameters.clientId || !parameters.date || !parameters.startTime || !parameters.endTime) {
+      console.error('Missing required parameters for schedule creation.');
+      // Optionally, send a message back to the user/agent
+      return { success: false, error: 'Missing required parameters for schedule creation.' };
+    }
+    try {
+      const scheduleData = {
+        client_id: parameters.clientId,
+        date: parameters.date,
+        start_time: parameters.startTime,
+        end_time: parameters.endTime,
+        notes: parameters.notes || '',
+        required_skills: parameters.requiredSkills || [],
+        status: 'pending_assignment', // Or another initial status
+        created_by_agent: true,
+        created_by_user_id: userId,
+      };
+      const newSchedule = await firebaseService.addSchedule(scheduleData); // Assumes addSchedule is on firebaseService
+      console.log('Schedule created by agent:', newSchedule);
+      return { success: true, scheduleId: newSchedule.id, data: newSchedule };
+    } catch (error) {
+      console.error('Error in handleScheduleCreate:', error);
+      return { success: false, error: error.message };
+    }
   }
 
   /**
    * Handle a schedule update action
    * @param {string} userId - The user's ID
-   * @param {Object} parameters - The action parameters
+   * @param {Object} parameters - The action parameters. Expected: { scheduleId, updates: { ... } }
    * @returns {Promise<void>}
    */
   async handleScheduleUpdate(userId, parameters) {
-    console.log(`Updating schedule for user ${userId}:`, parameters);
-    
-    // This would connect to the schedule service
-    // For now, just log the action
+    console.log(`Agent action: Updating schedule for user ${userId} with params:`, parameters);
+    // Example parameters: { scheduleId, updates: { date, startTime, endTime, notes, status } }
+    if (!parameters.scheduleId || !parameters.updates || typeof parameters.updates !== 'object') {
+      console.error('Missing required parameters for schedule update.');
+      return { success: false, error: 'Missing scheduleId or updates object for schedule update.' };
+    }
+    try {
+      const updatedData = {
+        ...parameters.updates,
+        updated_by_agent: true,
+        updated_by_user_id: userId,
+      };
+      const result = await firebaseService.updateSchedule(parameters.scheduleId, updatedData); // Assumes updateSchedule is on firebaseService
+      console.log('Schedule updated by agent:', result);
+      return { success: true, result };
+    } catch (error) {
+      console.error('Error in handleScheduleUpdate:', error);
+      return { success: false, error: error.message };
+    }
   }
 
   /**
    * Handle a caregiver assignment action
    * @param {string} userId - The user's ID
-   * @param {Object} parameters - The action parameters
+   * @param {Object} parameters - The action parameters. Expected: { scheduleId, caregiverId }
    * @returns {Promise<void>}
    */
   async handleCaregiverAssign(userId, parameters) {
-    console.log(`Assigning caregiver for user ${userId}:`, parameters);
-    
-    // This would connect to the caregiver assignment service
-    // For now, just log the action
+    console.log(`Agent action: Assigning caregiver for user ${userId} with params:`, parameters);
+    // Example parameters: { scheduleId, caregiverId }
+    if (!parameters.scheduleId || !parameters.caregiverId) {
+      console.error('Missing required parameters for caregiver assignment.');
+      return { success: false, error: 'Missing scheduleId or caregiverId for assignment.' };
+    }
+    try {
+      // Using enhancedScheduler as it likely contains more complex assignment logic
+      const result = await enhancedScheduler.assignCaregiverToSchedule(parameters.scheduleId, parameters.caregiverId);
+      console.log('Caregiver assigned by agent:', result);
+      // Optionally, update the schedule document with agent assignment info directly if not handled by assignCaregiverToSchedule
+      if (result.success) {
+         await firebaseService.updateSchedule(parameters.scheduleId, {
+            caregiver_id: parameters.caregiverId,
+            status: 'confirmed', // Or an appropriate status
+            updated_by_agent: true,
+            updated_by_user_id: userId
+        });
+      }
+      return { success: result.success, details: result };
+    } catch (error) {
+      console.error('Error in handleCaregiverAssign:', error);
+      return { success: false, error: error.message };
+    }
   }
 
   /**

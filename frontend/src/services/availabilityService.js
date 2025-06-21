@@ -6,9 +6,14 @@
  * the backend Firebase service.
  */
 
-import firebaseService from './firebaseService';
+// No direct import of firebaseService if we are consistently using electronAPI or HTTP calls.
+// import firebaseService from './firebaseService';
 
 class AvailabilityService {
+  constructor() {
+    this.isElectron = typeof window !== 'undefined' && !!window.electronAPI;
+  }
+
   /**
    * Get a caregiver's availability settings
    * @param {string} caregiverId - The ID of the caregiver
@@ -16,34 +21,32 @@ class AvailabilityService {
    */
   async getCaregiverAvailability(caregiverId) {
     try {
-      // Call the backend service
-      const response = await firebaseService.getCaregiverAvailability(caregiverId);
-      
-      // If no availability data exists yet, return empty defaults
-      if (!response) {
-        return {
-          regularSchedule: [],
-          timeOff: []
-        };
+      if (this.isElectron) {
+        const response = await window.electronAPI.getCaregiverAvailability(caregiverId);
+        // If no availability data exists yet, return empty defaults
+        if (!response) {
+          return {
+            regularSchedule: [],
+            timeOff: []
+          };
+        }
+        // Process regular schedule to ensure dayOfWeek is a number
+        const regularSchedule = (response.regularSchedule || []).map(entry => ({
+          ...entry,
+          dayOfWeek: typeof entry.dayOfWeek === 'number' ? entry.dayOfWeek : parseInt(entry.dayOfWeek, 10)
+        }));
+        // Process time off to convert timestamp objects to ISO strings for the UI
+        const timeOff = (response.timeOff || []).map(entry => ({
+          ...entry,
+          startDate: this._formatFirebaseDate(entry.startDate),
+          endDate: this._formatFirebaseDate(entry.endDate)
+        }));
+        return { regularSchedule, timeOff };
+      } else {
+        // TODO: Implement Firebase Function call for web environment
+        console.warn('getCaregiverAvailability: Web environment not yet implemented. Returning mock data.');
+        return { regularSchedule: [], timeOff: [] }; // Mock response
       }
-      
-      // Process regular schedule to ensure dayOfWeek is a number
-      const regularSchedule = (response.regularSchedule || []).map(entry => ({
-        ...entry,
-        dayOfWeek: typeof entry.dayOfWeek === 'number' ? entry.dayOfWeek : parseInt(entry.dayOfWeek, 10)
-      }));
-      
-      // Process time off to convert timestamp objects to ISO strings for the UI
-      const timeOff = (response.timeOff || []).map(entry => ({
-        ...entry,
-        startDate: this._formatFirebaseDate(entry.startDate),
-        endDate: this._formatFirebaseDate(entry.endDate)
-      }));
-      
-      return {
-        regularSchedule,
-        timeOff
-      };
     } catch (error) {
       console.error('Error getting caregiver availability:', error);
       throw new Error(`Failed to get availability: ${error.message}`);
@@ -58,14 +61,18 @@ class AvailabilityService {
    */
   async updateCaregiverAvailability(caregiverId, availabilityData) {
     try {
-      // Format the data for Firebase
-      const formattedData = {
-        regularSchedule: availabilityData.regularSchedule,
-        timeOff: availabilityData.timeOff
+      const formattedData = { // Ensure data is structured as expected by backend
+        regularSchedule: availabilityData.regularSchedule || [],
+        timeOff: availabilityData.timeOff || []
       };
-      
-      // Call the backend service
-      return await firebaseService.updateCaregiverAvailability(caregiverId, formattedData);
+
+      if (this.isElectron) {
+        return await window.electronAPI.updateCaregiverAvailability(caregiverId, formattedData);
+      } else {
+        // TODO: Implement Firebase Function call for web environment
+        console.warn('updateCaregiverAvailability: Web environment not yet implemented.');
+        return { success: true, message: "Mock update successful." }; // Mock response
+      }
     } catch (error) {
       console.error('Error updating caregiver availability:', error);
       throw new Error(`Failed to update availability: ${error.message}`);

@@ -162,14 +162,133 @@ class SchedulerService {
    * @param {string} date - The date to optimize (YYYY-MM-DD)
    * @returns {Promise<Object>} - Optimization results
    */
-  async optimizeSchedules(date) {
+  async optimizeSchedulesByDate(date) { // Renamed original
     try {
-      return await window.electronAPI.optimizeSchedules(date);
+      return await window.electronAPI.optimizeSchedules(date); // Assumes this IPC channel exists for date-based optimization
     } catch (error) {
-      console.error('Error optimizing schedules:', error);
+      console.error('Error optimizing schedules by date:', error);
       throw error;
     }
   }
+
+  // --- Methods needed by ScheduleOptimizationControls.jsx ---
+  async getSchedulesInRange(params) {
+    // This likely maps to an existing IPC call, e.g., getCircularEntities or a specific schedules query
+    // For now, assuming a new or existing IPC channel.
+    // electronAPI.getSchedulesInRange might be more specific if created.
+    try {
+      if (!window.electronAPI || !window.electronAPI.getCircularEntities) { // Check specific needed call
+         console.warn('getSchedulesInRange: electronAPI.getCircularEntities not available. Returning mock data.');
+         return Promise.resolve([]);
+      }
+      // Using getCircularEntities as a placeholder, actual IPC might be different
+      return await window.electronAPI.getCircularEntities('schedules', {
+        startDate: params.startDate,
+        endDate: params.endDate,
+        details: params.includeDetails
+      });
+    } catch (error) {
+      console.error('Error fetching schedules in range:', error);
+      throw error;
+    }
+  }
+
+  async getOptimizationHistory() {
+    // TODO: Implement IPC call: await window.electronAPI.getOptimizationHistory();
+    console.warn('getOptimizationHistory: Not yet implemented. Returning mock data.');
+    return Promise.resolve([]); // Mock
+  }
+
+  async optimizeSchedule(params) { // New method matching UI component's call
+    // params: { startDate, endDate, parameters (optimizationParams), applyChanges }
+    // TODO: Implement IPC call: await window.electronAPI.runScheduleOptimization(params);
+    console.warn('optimizeSchedule: Not yet implemented. Returning mock data.');
+    return Promise.resolve({ // Mock structure
+      optimizedSchedule: [],
+      metrics: {
+        optimizationId: `opt-${Date.now()}`,
+        improvementPercentage: 10,
+        travelDistance: { before: 100, after: 90, change: -10, improvementPercentage: 10 },
+        clientSatisfaction: { before: 80, after: 85, change: 5, improvementPercentage: 6.25 },
+        caregiverWorkload: { before: 'N/A', after: 'Balanced', change: 'N/A', improvementPercentage: 0 },
+        scheduleConflicts: { before: 5, after: 1, change: -4, improvementPercentage: 80 },
+        specialtyMatching: { before: 70, after: 75, change: 5, improvementPercentage: 7.14 },
+        timestamp: new Date().toISOString(),
+        scheduleDays: 7,
+        changedAppointments: 5,
+        affectedCaregivers: 3,
+        affectedClients: 4,
+      }
+    });
+  }
+
+  async applyOptimizedSchedule(params) {
+    // params: { optimizationId }
+    // TODO: Implement IPC call: await window.electronAPI.applyOptimizedSchedule(params.optimizationId);
+    console.warn('applyOptimizedSchedule: Not yet implemented. Mocking success.');
+    return Promise.resolve({ success: true }); // Mock
+  }
+
+  async getOptimizationDetails(optimizationId) {
+    // TODO: Implement IPC call: await window.electronAPI.getOptimizationDetails(optimizationId);
+    console.warn(`getOptimizationDetails for ${optimizationId}: Not yet implemented. Returning mock data.`);
+    return Promise.resolve({ // Mock structure, similar to optimizeSchedule output
+      optimizedSchedule: [],
+      metrics: { /* ... detailed metrics ... */ },
+      parameters: { /* ... parameters used for this optimization ... */ }
+    });
+  }
+   // --- End of methods for ScheduleOptimizationControls.jsx ---
+
+  // --- Methods needed by CaregiverMatchingSystem.jsx ---
+  async getMatchingHistory() {
+    // TODO: Implement IPC call: await window.electronAPI.getMatchingHistory();
+    console.warn('getMatchingHistory: Not yet implemented. Returning mock data.');
+    return Promise.resolve([]); // Mock
+  }
+
+  async runAutomatedMatching(params) { // { criteria }
+    // TODO: Implement IPC call: await window.electronAPI.runAutomatedMatching(params);
+    console.warn('runAutomatedMatching: Not yet implemented. Returning mock data.');
+    return Promise.resolve([]); // Mock: array of match results
+  }
+
+  async applyMatches(params) { // { matches }
+    // TODO: Implement IPC call: await window.electronAPI.applyMatches(params);
+    console.warn('applyMatches: Not yet implemented. Mocking success.');
+    return Promise.resolve({ success: true }); // Mock
+  }
+
+  async saveMatchingCriteria(criteria) {
+    // TODO: Implement IPC call: await window.electronAPI.saveMatchingCriteria(criteria);
+    console.warn('saveMatchingCriteria: Not yet implemented. Mocking success.');
+    return Promise.resolve({ success: true }); // Mock
+  }
+
+  async getDefaultMatchingCriteria() {
+    // TODO: Implement IPC call: await window.electronAPI.getDefaultMatchingCriteria();
+    console.warn('getDefaultMatchingCriteria: Not yet implemented. Returning mock data.');
+    return Promise.resolve({}); // Mock: default criteria object
+  }
+
+  async getUnassignedClients() {
+    // TODO: Implement IPC call: await window.electronAPI.getUnassignedClients();
+    console.warn('getUnassignedClients: Not yet implemented. Returning mock data.');
+    return Promise.resolve([]); // Mock
+  }
+
+  async getHistoricalMatches(historyId) {
+    // TODO: Implement IPC call: await window.electronAPI.getHistoricalMatches(historyId);
+    console.warn(`getHistoricalMatches for ${historyId}: Not yet implemented. Returning mock data.`);
+    return Promise.resolve([]); // Mock
+  }
+
+  async revertMatches(historyId) {
+    // TODO: Implement IPC call: await window.electronAPI.revertMatches(historyId);
+    console.warn(`revertMatches for ${historyId}: Not yet implemented. Mocking success.`);
+    return Promise.resolve({ success: true }); // Mock
+  }
+  // --- End of methods for CaregiverMatchingSystem.jsx ---
 }
 
 // Create and export singleton instance

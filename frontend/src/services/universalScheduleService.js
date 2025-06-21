@@ -195,6 +195,51 @@ class UniversalScheduleService {
       throw error;
     }
   }
+
+  // --- Methods needed by ConflictResolutionUI ---
+  async getPendingConflicts() {
+    // TODO: Implement IPC call: await window.electronAPI.getPendingConflicts();
+    console.warn('getPendingConflicts: Not yet implemented. Returning mock data.');
+    return Promise.resolve([]); // Mock
+  }
+
+  async getResolvedConflicts() {
+    // TODO: Implement IPC call: await window.electronAPI.getResolvedConflicts();
+    console.warn('getResolvedConflicts: Not yet implemented. Returning mock data.');
+    return Promise.resolve([]); // Mock
+  }
+
+  async getAllConflicts() {
+    // TODO: Implement IPC call: await window.electronAPI.getAllConflicts();
+    console.warn('getAllConflicts: Not yet implemented. Returning mock data.');
+    return Promise.resolve([]); // Mock
+  }
+
+  async getConflictResolutionHistory() {
+    // TODO: Implement IPC call: await window.electronAPI.getConflictResolutionHistory();
+    console.warn('getConflictResolutionHistory: Not yet implemented. Returning mock data.');
+    return Promise.resolve([]); // Mock
+  }
+
+  async getConflictResolutionOptions(conflictId) {
+    // TODO: Implement IPC call: await window.electronAPI.getConflictResolutionOptions(conflictId);
+    console.warn(`getConflictResolutionOptions for ${conflictId}: Not yet implemented. Returning mock data.`);
+    return Promise.resolve([]); // Mock
+  }
+
+  async resolveConflict(resolutionData) {
+    // TODO: Implement IPC call: await window.electronAPI.resolveConflict(resolutionData);
+    console.warn('resolveConflict: Not yet implemented. Mocking success.');
+    return Promise.resolve({ success: true, resolutionData }); // Mock
+  }
+
+  async overrideConflict(overrideData) {
+    // TODO: Implement IPC call: await window.electronAPI.overrideConflict(overrideData);
+    console.warn('overrideConflict: Not yet implemented. Mocking success.');
+    return Promise.resolve({ success: true, overrideData }); // Mock
+  }
+  // --- End of methods for ConflictResolutionUI ---
+
 }
 
 // Create and export singleton instance

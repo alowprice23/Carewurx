@@ -351,88 +351,71 @@ ipcMain.handle('firebase:getCircularEntities', async (event, entityType, filter)
   return await firebaseService.getDocuments(entityType, filter);
 });
 
-/**
- * Validate input parameters to prevent injection attacks
- * @param {any} params - Parameters to validate
- * @returns {boolean} Whether the parameters are valid
- */
-function validateParams(params) {
-  // Check if params is undefined
-  if (params === undefined) return false;
-  
-  // If params is an array, check each item
-  if (Array.isArray(params)) {
-    return params.every(param => validateParams(param));
-  }
-  
-  // If params is an object, check each property
-  if (typeof params === 'object' && params !== null) {
-    return Object.values(params).every(value => validateParams(value));
-  }
-  
-  // Check for potentially dangerous strings
-  if (typeof params === 'string') {
-    const dangerousPatterns = [
-      /\s*<script\b[^>]*>/i, // script tags
-      /\s*javascript\s*:/i,  // javascript: protocol
-      /\s*data\s*:/i,        // data: URI
-      /\beval\s*\(/i,        // eval() function
-      /\bdocument\s*\.\s*write/i, // document.write
-      /\bFunction\s*\(/i     // Function constructor
-    ];
-    
-    return !dangerousPatterns.some(pattern => pattern.test(params));
-  }
-  
-  // All other types are considered safe
-  return true;
-}
+// --- IPC Handlers for ConflictResolutionUI (to be implemented) ---
+// ipcMain.handle('conflicts:getPending', async (event) => { /* ... call enhancedScheduler or firebaseService ... */ });
+// ipcMain.handle('conflicts:getResolved', async (event) => { /* ... */ });
+// ipcMain.handle('conflicts:getAll', async (event) => { /* ... */ });
+// ipcMain.handle('conflicts:getHistory', async (event) => { /* ... */ });
+// ipcMain.handle('conflicts:getOptions', async (event, conflictId) => { /* ... */ });
+// ipcMain.handle('conflicts:resolve', async (event, resolutionData) => { /* ... */ });
+// ipcMain.handle('conflicts:override', async (event, overrideData) => { /* ... */ });
+// --- End of ConflictResolutionUI IPC Handlers ---
 
-// Authentication related handlers with enhanced security
-ipcMain.handle('auth:getCurrentUser', async (event) => {
-  // In a real implementation, you would validate the user session
-  // For now, return a mock user with limited information
-  return {
-    uid: 'test-user-123',
-    email: 'admin@carewurx.com',
-    displayName: 'Admin User',
-    role: 'admin'
-  };
-});
+// --- IPC Handlers for ScheduleOptimizationControls (to be implemented) ---
+// ipcMain.handle('scheduler:getSchedulesInRange', async (event, params) => { /* ... call firebaseService ... */ });
+// ipcMain.handle('scheduler:getOptimizationHistory', async (event) => { /* ... call enhancedScheduler or firebaseService ... */ });
+// ipcMain.handle('scheduler:runOptimization', async (event, params) => { /* ... call enhancedScheduler.optimizeSchedule(params) ... */ });
+// ipcMain.handle('scheduler:applyOptimization', async (event, optimizationId) => { /* ... call enhancedScheduler.applyOptimizedSchedule(optimizationId) ... */ });
+// ipcMain.handle('scheduler:getOptimizationDetails', async (event, optimizationId) => { /* ... call enhancedScheduler or firebaseService ... */ });
+// ipcMain.handle('scheduler:optimizeSchedulesByDate', async (event, date) => { /* ... call enhancedScheduler.optimizeSchedules(date) ... */ }); // Original handler
+// --- End of ScheduleOptimizationControls IPC Handlers ---
 
-ipcMain.handle('auth:signIn', async (event, email, password) => {
-  console.log('Received sign-in request');
-  try {
-    // Validate input parameters
-    if (!validateParams(email) || !validateParams(password)) {
-      throw new Error('Invalid input parameters');
-    }
-    
-    // In a real app, you would verify credentials against Firebase Auth
-    // and implement proper authentication
-    if (email && password && typeof email === 'string' && typeof password === 'string') {
-      return {
-        user: {
-          uid: 'test-user-123',
-          email: email,
-          displayName: email.split('@')[0], 
-          role: 'user'
-        }
-      };
-    } else {
-      throw new Error('Invalid email or password');
-    }
-  } catch (error) {
-    console.error('Sign-in error:', error);
-    throw new Error('Authentication failed');
-  }
-});
+// --- IPC Handlers for CaregiverMatchingSystem (to be implemented, likely call enhancedScheduler) ---
+// ipcMain.handle('scheduler:getMatchingHistory', async (event) => { /* ... */ });
+// ipcMain.handle('scheduler:runAutomatedMatching', async (event, params) => { /* ... */ });
+// ipcMain.handle('scheduler:applyMatches', async (event, params) => { /* ... */ });
+// ipcMain.handle('scheduler:saveMatchingCriteria', async (event, criteria) => { /* ... */ });
+// ipcMain.handle('scheduler:getDefaultMatchingCriteria', async (event) => { /* ... */ });
+// ipcMain.handle('scheduler:getUnassignedClients', async (event) => { /* ... */ });
+// ipcMain.handle('scheduler:getHistoricalMatches', async (event, historyId) => { /* ... */ });
+// ipcMain.handle('scheduler:revertMatches', async (event, historyId) => { /* ... */ });
+// --- End of CaregiverMatchingSystem IPC Handlers ---
 
-ipcMain.handle('auth:signOut', async (event) => {
-  // Placeholder for sign out functionality
-  console.log('User signed out');
-  return { success: true };
-});
+// --- IPC Handlers for UniversalDataService (to be implemented) ---
+// These would typically call methods on firebaseService (the admin one)
+// Example: ipcMain.handle('data:getEntities', async (event, entityType, options) => firebaseService.getDocuments(entityType, options) );
+// ipcMain.handle('data:getEntity', async (event, entityType, entityId) => firebaseService.getDocument(entityType, entityId) );
+// ipcMain.handle('data:createEntity', async (event, entityType, data) => firebaseService.addDocument(entityType, data) );
+// ipcMain.handle('data:updateEntity', async (event, entityType, entityId, data) => firebaseService.updateDocument(entityType, entityId, data) );
+// ipcMain.handle('data:deleteEntity', async (event, entityType, entityId) => firebaseService.deleteDocument(entityType, entityId) );
+// --- End of UniversalDataService IPC Handlers ---
+
+// --- IPC Handlers for DataConsistencyChecker (to be implemented, likely call a new backend service) ---
+// ipcMain.handle('dbHealth:getStatus', async (event) => { /* ... */ });
+// ipcMain.handle('dbHealth:runCheck', async (event, config) => { /* ... */ });
+// ipcMain.handle('dbHealth:getInconsistencies', async (event, filter) => { /* ... */ });
+// ipcMain.handle('dbHealth:runRepairs', async (event, selectedIds, repairConfig) => { /* ... */ });
+// ipcMain.handle('dbHealth:getStatistics', async (event) => { /* ... */ });
+// --- End of DataConsistencyChecker IPC Handlers ---
+
+// Note: The mock 'auth:*' IPC handlers have been removed.
+// Authentication is now handled by the Firebase Client SDK in the renderer (Login.jsx).
+// If main process actions need to be performed on behalf of an authenticated user,
+// the renderer should send the user's ID token via an IPC channel.
+// The main process would then verify this ID token using the Firebase Admin SDK
+// before performing the action. Example (conceptual):
+// ipcMain.handle('some:secureAction', async (event, idToken, actionData) => {
+//   try {
+//     const decodedToken = await admin.auth().verifyIdToken(idToken);
+//     const uid = decodedToken.uid;
+//     // Proceed with action using uid and actionData
+//     // Example: return await someService.doSecureThingForUser(uid, actionData);
+//   } catch (error) {
+//     console.error('Secure action failed: Invalid ID token or other error', error);
+//     throw new Error('Authentication required or token invalid.');
+//   }
+// });
+
 
 /**
  * Apply security-related handlers and enhancements when the app is ready

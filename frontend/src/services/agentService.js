@@ -423,6 +423,74 @@ class AgentService {
       throw error;
     }
   }
+
+  // --- Methods for APIKeyManager ---
+  _getLocalStorageKey(provider) {
+    return `carewurx_apikey_${provider}`;
+  }
+
+  async getApiKeys() {
+    await delay(100);
+    return {
+      groq: "Set via backend environment variable (GROQ_API_KEY)", // Display only for Groq
+      openai: localStorage.getItem(this._getLocalStorageKey('openai')) || '',
+      anthropic: localStorage.getItem(this._getLocalStorageKey('anthropic')) || '',
+    };
+  }
+
+  async saveApiKey(provider, apiKey) {
+    await delay(100);
+    if (provider === 'groq') {
+      // Groq key is backend configured
+      console.warn("Groq API key is configured via backend environment variables and cannot be set from the client.");
+      return { success: false, message: "Groq API key is backend-configured." };
+    }
+    localStorage.setItem(this._getLocalStorageKey(provider), apiKey);
+    return { success: true };
+  }
+
+  async deleteApiKey(provider) {
+    await delay(100);
+     if (provider === 'groq') {
+      console.warn("Groq API key is backend-configured and cannot be removed from the client.");
+      return { success: false, message: "Groq API key is backend-configured." };
+    }
+    localStorage.removeItem(this._getLocalStorageKey(provider));
+    return { success: true };
+  }
+
+  async validateApiKey(provider, apiKey) {
+    await delay(500); // Simulate validation
+    if (provider === 'groq') {
+      return { isValid: true, message: "Groq key status is determined by backend environment configuration." };
+    }
+    // Mock validation for other providers
+    if (apiKey && apiKey.length > 10) { // Simple mock validation
+      return { isValid: true, message: "Key appears valid (mock)." };
+    }
+    return { isValid: false, message: "Key is invalid or too short (mock)." };
+  }
+
+  async getApiKeyStatus() {
+    await delay(100);
+    const now = new Date().toISOString();
+    return {
+      groq: { isValid: true, lastValidated: now }, // Assume backend key is valid
+      openai: { isValid: !!localStorage.getItem(this._getLocalStorageKey('openai')), lastValidated: now },
+      anthropic: { isValid: !!localStorage.getItem(this._getLocalStorageKey('anthropic')), lastValidated: now },
+    };
+  }
+
+  async getApiUsageStats() {
+    // Mock implementation
+    await delay(200);
+    const defaultStats = { requests: 0, tokens: 0, lastRequest: null };
+    return {
+      groq: { requests: 120, tokens: 250000, lastRequest: new Date(Date.now() - 3600000).toISOString() }, // Mocked recent usage
+      openai: defaultStats,
+      anthropic: defaultStats,
+    };
+  }
 }
 
 // Create and export singleton instance

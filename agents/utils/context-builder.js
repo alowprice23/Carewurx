@@ -242,11 +242,16 @@ class ContextBuilder {
    */
   async getUserRole(userId) {
     try {
-      const userInfo = await firebaseService.getUserInfo(userId);
-      return userInfo?.role || 'user';
+      // Fetch user document from 'users' collection in Firestore
+      const userDoc = await firebaseService.getDocument('users', userId); // getDocument returns { id, ...data } or null
+      if (userDoc && userDoc.role) {
+        return userDoc.role;
+      }
+      console.warn(`User role not found for userId: ${userId}, defaulting to 'user'.`);
+      return 'user'; // Default role if not found or no role field
     } catch (error) {
-      console.error('Error getting user role:', error);
-      return 'user';
+      console.error(`Error getting user role for userId ${userId}:`, error);
+      return 'user'; // Default role on error
     }
   }
 
@@ -645,13 +650,15 @@ class ContextBuilder {
     try {
       // Check if it's a date format (YYYY-MM-DD)
       if (idOrDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        return await firebaseService.getSchedulesByDate(idOrDate);
+        // Use getSchedulesInDateRange for a single day
+        const schedules = await firebaseService.getSchedulesInDateRange(idOrDate, idOrDate);
+        return schedules; // This will be an array
       }
       
       // Otherwise, treat as ID
-      const schedule = await firebaseService.getSchedule(idOrDate);
+      const schedule = await firebaseService.getSchedule(idOrDate); // This returns a single doc or null
       
-      return schedule || { error: 'Schedule not found' };
+      return schedule || { error: 'Schedule not found' }; // If fetching by ID and not found
     } catch (error) {
       console.error('Error fetching schedule data:', error);
       return { error: error.message };

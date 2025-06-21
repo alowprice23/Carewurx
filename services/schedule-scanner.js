@@ -111,17 +111,24 @@ class ScheduleScanner {
         await this.createOpportunityNotification(opportunity);
       }
 
-      // Store scan history
-      this.scanHistory.push({
-        timestamp: new Date().toISOString(),
+      // Store scan history in Firestore
+      const scanLogEntry = {
+        timestamp: admin.firestore.FieldValue.serverTimestamp(), // Use server timestamp
         schedulesScanned: schedules.length,
         opportunitiesFound: opportunities.length,
-        dateRange: { startDate, endDate }
-      });
-
-      // Limit history length
-      if (this.scanHistory.length > 100) {
-        this.scanHistory = this.scanHistory.slice(-100);
+        dateRange: { startDate, endDate },
+        status: 'completed', // Assuming success if it reaches here
+        durationMs: Date.now() - scanStartTime, // Approximate duration
+      };
+      try {
+        await firebaseService.addDocument('scanHistory', scanLogEntry);
+        // Also keep a limited in-memory log if desired for quick access by getScanHistory, or make getScanHistory fetch from Firestore
+        this.scanHistory.unshift(scanLogEntry); // Add to beginning
+        if (this.scanHistory.length > 20) { // Keep last 20 in memory
+            this.scanHistory.pop();
+        }
+      } catch (dbError) {
+        console.error('Failed to save scan history to Firestore:', dbError);
       }
 
       this.lastScanTime = new Date();

@@ -275,16 +275,19 @@ const APIKeyManager = () => {
               type={isKeyVisible ? 'text' : 'password'}
               value={apiKeys[activeProvider]}
               onChange={handleInputChange}
-              placeholder={`Enter your ${formatProviderName(activeProvider)} API key`}
-              disabled={loading}
+              placeholder={activeProvider === 'groq' ? 'Backend configured (GROQ_API_KEY)' : `Enter your ${formatProviderName(activeProvider)} API key`}
+              disabled={loading || activeProvider === 'groq'}
+              readOnly={activeProvider === 'groq'}
             />
-            <button 
-              type="button" 
-              className="toggle-visibility"
-              onClick={() => setIsKeyVisible(!isKeyVisible)}
-            >
-              {isKeyVisible ? 'Hide' : 'Show'}
-            </button>
+            {activeProvider !== 'groq' && (
+              <button
+                type="button"
+                className="toggle-visibility"
+                onClick={() => setIsKeyVisible(!isKeyVisible)}
+              >
+                {isKeyVisible ? 'Hide' : 'Show'}
+              </button>
+            )}
           </div>
         </div>
         
@@ -293,7 +296,7 @@ const APIKeyManager = () => {
             type="button" 
             className="save-button"
             onClick={handleSaveKey}
-            disabled={loading || !apiKeys[activeProvider]}
+            disabled={loading || !apiKeys[activeProvider] || activeProvider === 'groq'}
           >
             Save Key
           </button>
@@ -301,7 +304,7 @@ const APIKeyManager = () => {
             type="button" 
             className="validate-button"
             onClick={handleValidateKey}
-            disabled={validating || !apiKeys[activeProvider]}
+            disabled={validating || !apiKeys[activeProvider] || (activeProvider === 'groq' && keyStatus.groq.isValid)} // Groq always valid or use backend status
           >
             {validating ? 'Validating...' : 'Validate Key'}
           </button>
@@ -309,7 +312,7 @@ const APIKeyManager = () => {
             type="button" 
             className="delete-button"
             onClick={handleDeleteKey}
-            disabled={loading || !apiKeys[activeProvider]}
+            disabled={loading || !apiKeys[activeProvider] || activeProvider === 'groq'}
           >
             Remove Key
           </button>
