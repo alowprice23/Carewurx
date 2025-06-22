@@ -16,6 +16,9 @@ if not GROQ_API_KEY:
 # Initialize Flask app
 app = Flask(__name__)
 
+# Import the optimizer
+from caregiver_optimizer import generate_optimal_schedule
+
 # Initialize Groq LLM using CrewAI
 try:
     print(f"Initializing Groq LLM with key: {GROQ_API_KEY[:5]}...")
@@ -84,3 +87,28 @@ def handle_bruce_request():
 if __name__ == '__main__':
     # Note: This is a development server. For production, use a proper WSGI server.
     app.run(host='0.0.0.0', port=5001)
+
+@app.route('/optimize-schedule', methods=['POST'])
+def handle_optimize_schedule():
+    client_data = request.get_json()
+    if not client_data:
+        return jsonify({"error": "Client data not provided"}), 400
+    if not isinstance(client_data, list):
+        return jsonify({"error": "Client data must be a list"}), 400
+
+    print(f"Received {len(client_data)} client entries for schedule optimization.")
+
+    try:
+        # Assuming generate_optimal_schedule is imported from your optimizer script
+        # and it takes a list of client dicts and returns a list of schedule dicts.
+        optimized_schedule = generate_optimal_schedule(client_data)
+
+        print(f"Generated optimized schedule with {len(optimized_schedule)} caregiver positions.")
+        return jsonify({"schedule": optimized_schedule})
+    except Exception as e:
+        error_message = str(e)
+        print(f"Error during schedule optimization: {error_message}")
+        # Log the full traceback for debugging
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({"error": f"An error occurred during optimization: {error_message}"}), 500

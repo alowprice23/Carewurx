@@ -7,6 +7,7 @@
 const { firebaseService } = require('./firebase');
 const realTimeUpdatesService = require('../app/services/real-time-updates');
 const distanceCalculator = require('../utils/distance-calculator');
+const http = require('http'); // For calling Python optimizer
 
 class EnhancedScheduler {
   constructor() {
@@ -559,6 +560,64 @@ class EnhancedScheduler {
       console.error('Error converting time to minutes:', error);
       return null; // Return null on error
     }
+  }
+
+  /**
+   * Get an optimized schedule from the Python optimization agent.
+   * @param {Array<Object>} clientDataList - A list of client data objects.
+   * Each object should conform to the structure expected by the Python optimizer:
+   * { name: string, hours: int, days: int, needs_driver: bool, zip_code: string }
+   * @returns {Promise<Object>} The optimized schedule response from the agent.
+   */
+  async getOptimizedSchedule(clientDataList) {
+    return new Promise((resolve, reject) => {
+      const postData = JSON.stringify(clientDataList);
+
+      const options = {
+        hostname: 'localhost', // Assuming python agent runs locally
+        port: 5001, // Default port for the python agent
+        path: '/optimize-schedule',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(postData),
+        },
+      };
+
+      console.log(`Requesting optimized schedule from Python agent with ${clientDataList.length} clients.`);
+
+      const req = http.request(options, (res) => {
+        let responseBody = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => {
+          responseBody += chunk;
+        });
+        res.on('end', () => {
+          try {
+            const parsedBody = JSON.parse(responseBody);
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              console.log('Successfully received optimized schedule from Python agent.');
+              resolve(parsedBody);
+            } else {
+              console.error(`Python agent responded with status ${res.statusCode}:`, parsedBody.error || responseBody);
+              reject(new Error(`Optimization agent error: ${parsedBody.error || responseBody}`));
+            }
+          } catch (e) {
+            console.error('Error parsing JSON response from Python agent:', e, responseBody);
+            reject(new Error(`Failed to parse optimization agent response: ${e.message}`));
+          }
+        });
+      });
+
+      req.on('error', (e) => {
+        console.error('Error calling Python optimization agent:', e);
+        reject(new Error(`Failed to connect to optimization agent: ${e.message}`));
+      });
+
+      // Write data to request body
+      req.write(postData);
+      req.end();
+    });
   }
 }
 
