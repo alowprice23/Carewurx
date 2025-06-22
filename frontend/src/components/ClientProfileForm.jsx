@@ -23,7 +23,13 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
       onBusLine: false,
       requiresDriverCaregiver: false,
       mobilityEquipment: []
-    }
+    },
+    // Placeholder for self-improvement data - loaded from clientDoc.data()
+    // serviceUsagePatterns: {}, // e.g., {avgHoursPerWeek: 20, commonServices: ['companionship']}
+    // satisfactionScores: [], // e.g., [{date: '2023-01-15', score: 5, comment: 'Great service'}]
+    // communicationLogSummary: '', // Brief summary of important comms
+    // optimalMatchingScore: null, // A score indicating how well current services match ideal profile
+    // clientPreferencesText: '', // Free text for detailed client preferences
   });
   
   // Schedule requirements state
@@ -467,6 +473,14 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
         >
           Schedule Requirements
         </button>
+        {/*
+        <button
+          className={activeTab === 'insights' ? 'active' : ''}
+          onClick={() => setActiveTab('insights')}
+        >
+          Service Insights
+        </button>
+        */}
       </div>
       
       <form onSubmit={handleSubmit}>
@@ -746,6 +760,54 @@ const ClientProfileForm = ({ clientId, onSave, onCancel, initialTab = 'basic' })
             </button>
           </div>
         )}
+
+        {/* Placeholder for Service Insights Tab */}
+        {/*
+        activeTab === 'insights' && (
+          <div className="form-section">
+            <h3>Client Service Insights & History</h3>
+            <p>This section displays system-generated insights about service delivery for this client.</p>
+
+            <div className="form-group">
+              <label>Service Usage Patterns (Read-only)</label>
+              <pre>{JSON.stringify(profileData.serviceUsagePatterns, null, 2) || 'No patterns analyzed yet.'}</pre>
+            </div>
+
+            <div className="form-group">
+              <label>Satisfaction Scores (Read-only)</label>
+              {profileData.satisfactionScores?.length > 0 ? (
+                <ul>
+                  {profileData.satisfactionScores.map((entry, index) => (
+                    <li key={index}>{entry.date}: {entry.score}/5 - "{entry.comment}"</li>
+                  ))}
+                </ul>
+              ) : <p>No satisfaction scores recorded.</p>}
+            </div>
+
+            <div className="form-group">
+              <label>Communication Log Summary (Read-only)</label>
+              <p>{profileData.communicationLogSummary || 'No communication summary available.'}</p>
+            </div>
+
+            <div className="form-group">
+              <label>Optimal Matching Score (Read-only)</label>
+              <p>{profileData.optimalMatchingScore !== null ? `${profileData.optimalMatchingScore}%` : 'Not calculated'}</p>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="clientPreferencesText">Detailed Client Preferences / Notes (Editable)</label>
+              <textarea
+                id="clientPreferencesText"
+                name="clientPreferencesText" // Ensure this matches a key in profileData for handleProfileChange
+                value={profileData.clientPreferencesText || ''}
+                onChange={handleProfileChange}
+                rows={4}
+                placeholder="Detailed notes about client preferences, environment, non-obvious needs, etc."
+              />
+            </div>
+          </div>
+        )
+        */}
         
         <div className="form-actions">
           {onCancel && (

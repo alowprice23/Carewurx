@@ -24,7 +24,14 @@ const CaregiverProfileForm = ({ caregiverId, onSave, onCancel, initialTab = 'bas
       hasLicense: false,
       usesPublicTransport: false,
       travelRadius: 10
-    }
+    },
+    // Placeholder for self-improvement data - loaded from caregiverDoc.data()
+    // inferredSkills: [],
+    // performanceMetrics: {},
+    // feedbackSummary: '',
+    // preferenceNotes: '',
+    // certifications: [], // Could be part of basic info or a separate section
+    // trainingCompleted: [], // Could be part of skills or separate
   });
   
   // Availability state
@@ -339,6 +346,14 @@ const CaregiverProfileForm = ({ caregiverId, onSave, onCancel, initialTab = 'bas
         >
           Availability
         </button>
+        {/*
+        <button
+          className={activeTab === 'insights' ? 'active' : ''}
+          onClick={() => setActiveTab('insights')}
+        >
+          Insights & Development
+        </button>
+        */}
       </div>
       
       <form onSubmit={handleSubmit}>
@@ -620,6 +635,60 @@ const CaregiverProfileForm = ({ caregiverId, onSave, onCancel, initialTab = 'bas
             </button>
           </div>
         )}
+
+        {/* Placeholder for Insights & Development Tab */}
+        {/*
+        activeTab === 'insights' && (
+          <div className="form-section">
+            <h3>Learned Insights & Development Goals</h3>
+            <p className="section-description">
+              This section displays insights learned by the system and helps track development.
+            </p>
+
+            <div className="form-group">
+              <label>Inferred Skills (Read-only)</label>
+              <p>{profileData.inferredSkills?.join(', ') || 'None yet'}</p>
+            </div>
+
+            <div className="form-group">
+              <label>Performance Metrics (Read-only)</label>
+              <pre>{JSON.stringify(profileData.performanceMetrics, null, 2) || 'None available'}</pre>
+            </div>
+
+            <div className="form-group">
+              <label>Feedback Summary (Read-only)</label>
+              <p>{profileData.feedbackSummary || 'No feedback summary available.'}</p>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="preferenceNotes">Caregiver Preference Notes (Editable)</label>
+              <textarea
+                id="preferenceNotes"
+                name="preferenceNotes"
+                value={profileData.preferenceNotes || ''}
+                onChange={handleProfileChange}
+                rows={4}
+                placeholder="Notes on specific preferences, e.g., client types, work environment, etc."
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Certifications (Read-only, managed elsewhere or placeholder)</label>
+              <ul>
+                {profileData.certifications?.map(cert => <li key={cert.id}>{cert.name} - Expires: {cert.expiryDate}</li>) || <li>No certifications listed.</li>}
+              </ul>
+            </div>
+
+            <div className="form-group">
+              <label>Training Completed (Read-only, managed elsewhere or placeholder)</label>
+              <ul>
+                {profileData.trainingCompleted?.map(training => <li key={training.id}>{training.name} - Completed: {training.completionDate}</li>) || <li>No training listed.</li>}
+              </ul>
+            </div>
+
+          </div>
+        )
+        */}
         
         <div className="form-actions">
           <button
