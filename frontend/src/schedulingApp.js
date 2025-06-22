@@ -14,6 +14,7 @@ import ReactDOM from 'react-dom';
 import { BrowserRouter as Router, Switch, Route, Link } from 'react-router-dom'; // Import Link
 import SchedulingDemo from './pages/SchedulingDemo';
 import NewCalendarView from '../components/NewCalendarView'; // Import the new calendar view
+import UnassignedCaregiversPanel from '../components/UnassignedCaregiversPanel'; // Import the new panel
 
 // CSS
 import './app.css';
@@ -36,7 +37,10 @@ const SchedulingApp = () => {
         <main className="app-content">
           <Switch>
             <Route exact path="/" component={SchedulingDemo} />
-            <Route path="/calendar-v2" component={NewCalendarView} />
+            <Route path="/calendar-v2">
+              <NewCalendarView />
+              <UnassignedCaregiversPanel />
+            </Route>
           </Switch>
         </main>
         
