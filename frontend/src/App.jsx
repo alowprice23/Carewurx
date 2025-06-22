@@ -4,7 +4,7 @@ import {
   AgentChat,
   OpportunityScanner,
   NotificationCenter,
-  UniversalScheduleView,
+  NewCalendarView, // Using NewCalendarView
   AgentInsightDisplay,
   AvailabilityManager,
   ConflictResolutionUI,
@@ -352,9 +352,9 @@ const App = () => {
           <div className="tab-content">
             <h2>Universal Schedule</h2>
             <p className="tab-description">
-              View and manage schedules for clients and caregivers in a unified interface.
+              View and manage schedules for clients and caregivers in the new calendar interface.
             </p>
-            <UniversalScheduleView />
+            <NewCalendarView />
           </div>
         )}
         
