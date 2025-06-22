@@ -719,7 +719,7 @@ The algorithm aims to find an optimal solution under the defined model or prove 
 
 ### Phase 2: Core Feature Development - Scheduling & Profiles
 *   **Scheduling System UX Overhaul:**
-    *   [ ] Design new calendar section UI.
+    *   [X] Design new calendar section UI (Initial component `NewCalendarView.jsx` created with FullCalendar).
     *   [ ] Implement client filtering.
     *   [ ] Display active caregiver schedules.
     *   [ ] Section for unassigned new caregivers.
@@ -857,9 +857,13 @@ This section outlines the conceptual changes for the scheduling system's user ex
 **Next Steps for UI/UX (Implementation - Phased):**
 
 1.  **Setup Basic Calendar:**
-    *   Choose and integrate a calendar library (e.g., `react-big-calendar`, `FullCalendar`) or start a custom grid for `NewCalendarView.jsx`.
-    *   Fetch and display existing schedule data as events.
-2.  **Implement Client Filtering:** Add the client filter dropdown and logic to update the displayed events.
+    *   [X] Choose and integrate a calendar library (`FullCalendar` selected and installed).
+    *   [X] Create `NewCalendarView.jsx` with basic calendar structure and sample events.
+    *   [X] Integrate `NewCalendarView.jsx` into `schedulingApp.js` (added route and nav link).
+    *   [X] Fetch and display existing schedule data (from mock service) as events in `NewCalendarView.jsx`.
+2.  **Implement Client Filtering:**
+    *   [X] Add client filter dropdown to `NewCalendarView.jsx`.
+    *   [X] Implement logic to filter displayed calendar events based on selected client.
 3.  **Implement "View by Client" mode.**
 4.  **Develop `UnassignedCaregiversPanel.jsx`** and integrate it.
 5.  Iteratively add other filters, views, and polish.

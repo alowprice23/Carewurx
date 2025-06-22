@@ -11,8 +11,9 @@ import './services/firebaseServiceMock'; // This extends the firebaseService wit
 // Import main components
 import React from 'react';
 import ReactDOM from 'react-dom';
-import { BrowserRouter as Router, Switch, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Switch, Route, Link } from 'react-router-dom'; // Import Link
 import SchedulingDemo from './pages/SchedulingDemo';
+import NewCalendarView from '../components/NewCalendarView'; // Import the new calendar view
 
 // CSS
 import './app.css';
@@ -26,11 +27,16 @@ const SchedulingApp = () => {
       <div className="scheduling-app-container">
         <header className="app-header">
           <h1>Carewurx Scheduling System</h1>
+          <nav>
+            <Link to="/" style={{ marginRight: '10px', color: 'white' }}>Demo Page</Link>
+            <Link to="/calendar-v2" style={{ color: 'white' }}>New Calendar</Link>
+          </nav>
         </header>
         
         <main className="app-content">
           <Switch>
-            <Route path="/" component={SchedulingDemo} />
+            <Route exact path="/" component={SchedulingDemo} />
+            <Route path="/calendar-v2" component={NewCalendarView} />
           </Switch>
         </main>
         
