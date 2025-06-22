@@ -1,34 +1,62 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
-import { universalScheduleService } from '../services'; // Import the service
+import { universalScheduleService, universalDataService } from '../services'; // Import services
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import listPlugin from '@fullcalendar/list';
 
 const NewCalendarView = () => {
   const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [clients, setClients] = useState([]);
+  const [selectedClientId, setSelectedClientId] = useState(''); // Empty string for 'All Clients'
+  const [loading, setLoading] = useState({ schedules: true, clients: true });
   const [error, setError] = useState(null);
 
+  const fetchClients = useCallback(async () => {
+    setLoading(prev => ({ ...prev, clients: true }));
+    try {
+      const clientData = await universalDataService.getClients();
+      setClients(clientData || []);
+    } catch (err) {
+      console.error('Error fetching clients:', err);
+      setError('Failed to load clients.');
+      setClients([]);
+    } finally {
+      setLoading(prev => ({ ...prev, clients: false }));
+    }
+  }, []);
+
   const fetchAndTransformSchedules = useCallback(async () => {
-    setLoading(true);
+    setLoading(prev => ({ ...prev, schedules: true }));
     setError(null);
     try {
-      // Define a date range for fetching schedules, e.g., current month
       const today = new Date();
+      // For simplicity in this iteration, we'll fetch for a wider range if "All Clients"
+      // or refine the date range logic later (e.g., based on FullCalendar's visible range).
+      // For now, let's use current month for both cases, but be aware this might need adjustment.
       const startDate = new Date(today.getFullYear(), today.getMonth(), 1);
       const endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
 
-      const options = {
-        startDate: startDate.toISOString(),
-        endDate: endDate.toISOString(),
-        include: ['clients', 'caregivers'] // Assuming service supports this
-      };
+      let rawSchedules = [];
+      if (selectedClientId) {
+        // Fetch schedules for the specific client
+        rawSchedules = await universalScheduleService.getClientSchedules(
+          selectedClientId,
+          startDate.toISOString(),
+          endDate.toISOString()
+        );
+      } else {
+        // Fetch all schedules for the date range
+        const options = {
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+          include: ['clients', 'caregivers']
+        };
+        rawSchedules = await universalScheduleService.getSchedules(options);
+      }
 
-      const rawSchedules = await universalScheduleService.getSchedules(options);
-
-      const transformedEvents = rawSchedules.map(schedule => {
+      const transformedEvents = (rawSchedules || []).map(schedule => {
         // Combine date and time. Ensure date is correctly parsed.
         // FullCalendar expects ISO8601 strings or Date objects.
         const startDateTime = `${schedule.date}T${schedule.startTime}`;
@@ -58,19 +86,44 @@ const NewCalendarView = () => {
       setEvents(transformedEvents);
     } catch (err) {
       console.error('Error fetching or transforming schedules:', err);
-      setError('Failed to load schedule data. Please try again.');
+      setError(prevError => prevError ? `${prevError} And failed to load schedule data.` : 'Failed to load schedule data.');
       setEvents([]); // Clear events on error
     } finally {
-      setLoading(false);
+      setLoading(prev => ({ ...prev, schedules: false }));
     }
-  }, []); // No dependencies, will be called manually or by other triggers
+  }, [selectedClientId]); // Add selectedClientId as a dependency
 
   useEffect(() => {
-    fetchAndTransformSchedules();
-  }, [fetchAndTransformSchedules]);
+    fetchClients();
+  }, [fetchClients]);
 
-  if (loading) {
-    return <div className="calendar-loading">Loading calendar and schedules...</div>;
+  useEffect(() => {
+    // This effect now specifically handles fetching schedules when
+    // selectedClientId changes or on initial mount (via fetchAndTransformSchedules dependency).
+    fetchAndTransformSchedules();
+  }, [fetchAndTransformSchedules, selectedClientId]); // Ensure re-fetch when client filter changes
+
+  // Memoized filtered events - this might become redundant if server filtering is perfect,
+  // but good for ensuring consistency or further client-side tweaks if needed.
+  // For now, with server-side filtering for specific clients, 'events' state itself will be filtered.
+  // If 'All Clients' is selected, 'events' contains all, and no further client-side filtering on clientId is needed here.
+  const displayEvents = useMemo(() => {
+    // If selectedClientId is empty, events are already all events for the range.
+    // If selectedClientId is present, events are already filtered by the server for that client.
+    // So, directly use 'events' state here.
+    return events;
+  }, [events]);
+
+  if (loading.schedules || loading.clients) {
+    let loadingMessage = "Loading...";
+    if (loading.schedules && loading.clients) {
+      loadingMessage = "Loading calendar, schedules, and clients...";
+    } else if (loading.schedules) {
+      loadingMessage = "Loading calendar and schedules...";
+    } else if (loading.clients) {
+      loadingMessage = "Loading clients...";
+    }
+    return <div className="calendar-loading">{loadingMessage}</div>;
   }
 
   if (error) {
@@ -78,16 +131,32 @@ const NewCalendarView = () => {
   }
 
   return (
-    <div className="new-calendar-view" style={{ height: '80vh', padding: '20px' }}>
-      <FullCalendar
-        plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
-        initialView="dayGridMonth"
+    <div className="new-calendar-view" style={{ padding: '20px' }}>
+      <div className="calendar-controls">
+        <label htmlFor="client-filter">Filter by Client: </label>
+        <select
+          id="client-filter"
+          value={selectedClientId}
+          onChange={(e) => setSelectedClientId(e.target.value)}
+        >
+          <option value="">All Clients</option>
+          {clients.map(client => (
+            <option key={client.id} value={client.id}>
+              {client.name || `Client ID: ${client.id}`}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div style={{ height: '80vh', marginTop: '10px' }}> {/* Ensure calendar takes up significant height */}
+        <FullCalendar
+          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
+          initialView="dayGridMonth"
         headerToolbar={{
           left: 'prev,next today',
           center: 'title',
           right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
         }}
-        events={events} // Use fetched and transformed events
+        events={displayEvents} // Use the events (now directly filtered or all)
         editable={true}
         selectable={true}
         selectMirror={true}
@@ -106,11 +175,30 @@ const NewCalendarView = () => {
         }}
         // Add more FullCalendar props as needed
       />
+      </div>
       <style jsx global>{`
         .calendar-loading, .calendar-error {
           padding: 20px;
           text-align: center;
           font-size: 1.2em;
+        }
+        .calendar-controls {
+          margin-bottom: 15px;
+          padding: 10px;
+          background-color: #f8f9fa;
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .calendar-controls label {
+          font-weight: bold;
+        }
+        .calendar-controls select {
+          padding: 8px 12px;
+          border-radius: 4px;
+          border: 1px solid #ced4da;
+          min-width: 200px;
         }
         /* Basic styling for FullCalendar - can be expanded or moved to a CSS file */
         .fc { /* Target FullCalendar's main class */
