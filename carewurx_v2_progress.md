@@ -856,13 +856,25 @@ This section outlines the conceptual changes for the scheduling system's user ex
 
 **Next Steps for UI/UX (Implementation - Phased):**
 
-1.  **Setup Basic Calendar:**
-    *   Choose and integrate a calendar library (e.g., `react-big-calendar`, `FullCalendar`) or start a custom grid for `NewCalendarView.jsx`.
-    *   Fetch and display existing schedule data as events.
-2.  **Implement Client Filtering:** Add the client filter dropdown and logic to update the displayed events.
-3.  **Implement "View by Client" mode.**
-4.  **Develop `UnassignedCaregiversPanel.jsx`** and integrate it.
-5.  Iteratively add other filters, views, and polish.
+1.  **Setup Basic Calendar (Phase 1.1 Done):**
+    *   [X] Create `NewCalendarView.jsx` in `frontend/src/components/`.
+    *   [X] Add `react-big-calendar` and `moment` to `frontend/package.json` and simulate `npm install`.
+    *   [X] Add `getSchedulesForCalendar` to `frontend/src/services/firebase.js` to fetch and transform schedule data.
+    *   [X] `NewCalendarView.jsx` now uses `react-big-calendar` to display fetched schedules. Includes basic event click and slot select handlers.
+    *   [X] Integrated `NewCalendarView.jsx` into `frontend/src/App.jsx` under a new "V2 Calendar" tab.
+2.  **Implement Client Filtering (Phase 1.2 Done):**
+    *   [X] Added `getAllClientsList` to `frontend/src/services/firebase.js`.
+    *   [X] `NewCalendarView.jsx` now fetches clients and includes a dropdown to filter displayed calendar events by client.
+3.  **Implement "View by Client" Mode (Phase 1.3 Done):**
+    *   [X] Added UI controls (dropdown) in `NewCalendarView.jsx` to switch between "Overall" and "By Client" resource views.
+    *   [X] When "By Client" is selected, the calendar now renders clients as resources (lanes) in 'day' or 'week' view, displaying their respective schedules.
+    *   [X] `NewCalendarView.jsx` updated to manage `viewMode` (month, week, day) and `resourceViewMode` (overall, client) states.
+4.  **Develop `UnassignedCaregiversPanel.jsx` (Phase 1.4 Done):**
+    *   [X] Created `frontend/src/components/UnassignedCaregiversPanel.jsx`.
+    *   [X] Added `getAllCaregiversList` to `frontend/src/services/firebase.js`.
+    *   [X] Implemented logic in the panel to fetch caregivers and their upcoming schedules, identify underutilized active caregivers, and display them.
+    *   [X] Integrated `UnassignedCaregiversPanel.jsx` into `NewCalendarView.jsx`.
+5.  **Iteratively add other filters, views, and polish (Next):** This will include caregiver filtering, status filtering, date range pickers, and enhancing the event display/interaction.
 
 This conceptual outline will be used to guide the actual coding changes for the UI.
 

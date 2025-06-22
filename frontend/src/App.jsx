@@ -5,12 +5,12 @@ import {
   OpportunityScanner,
   NotificationCenter,
   UniversalScheduleView,
-  NewCalendarView, // Import the new calendar view
   AgentInsightDisplay,
   AvailabilityManager,
   ConflictResolutionUI,
   NotificationCreator,
   APIKeyManager,
+  NewCalendarView, // Import the new calendar view
   ResponseStreamingUI,
   UniversalDataEditor,
   CircularDataFlowMonitor,
@@ -208,14 +208,6 @@ const App = () => {
             </button>
           </li>
           <li>
-            <button
-              className={activeTab === 'v2calendar' ? 'active' : ''}
-              onClick={() => handleTabChange('v2calendar')}
-            >
-              V2 Calendar
-            </button>
-          </li>
-          <li>
             <button 
               className={activeTab === 'availability' ? 'active' : ''} 
               onClick={() => handleTabChange('availability')}
@@ -343,6 +335,14 @@ const App = () => {
               Data Consistency
             </button>
           </li>
+          <li>
+            <button
+              className={activeTab === 'v2calendar' ? 'active' : ''}
+              onClick={() => handleTabChange('v2calendar')}
+            >
+              V2 Calendar
+            </button>
+          </li>
         </ul>
       </nav>
       
@@ -364,16 +364,6 @@ const App = () => {
               View and manage schedules for clients and caregivers in a unified interface.
             </p>
             <UniversalScheduleView />
-          </div>
-        )}
-
-        {activeTab === 'v2calendar' && (
-          <div className="tab-content">
-            <h2>V2 Calendar</h2>
-            <p className="tab-description">
-              New calendar implementation using FullCalendar.
-            </p>
-            <NewCalendarView />
           </div>
         )}
         
@@ -552,6 +542,15 @@ const App = () => {
               Monitor database health, identify inconsistencies, and apply repairs.
             </p>
             <DataConsistencyChecker />
+          </div>
+        )}
+         {activeTab === 'v2calendar' && (
+          <div className="tab-content">
+            <h2>V2 Scheduling Calendar</h2>
+            <p className="tab-description">
+              New calendar view for managing schedules with advanced filtering.
+            </p>
+            <NewCalendarView />
           </div>
         )}
       </main>
